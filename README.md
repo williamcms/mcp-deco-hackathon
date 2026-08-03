@@ -64,6 +64,21 @@ bun run dev:api
 bun run dev:web
 ```
 
+### Connecting to deco Studio
+
+To test your MCP App in deco Studio, expose your local server through a tunnel:
+
+```bash
+bun start
+# Tunnel started -> 🌐 Preview: https://<your-id>.deco.host
+```
+
+Then connect in Studio using the MCP URL:
+
+```
+https://<your-id>.deco.host/api/mcp
+```
+
 ### Adding a New Tool with UI
 
 Each tool UI lives in `web/tools/<name>/`. The `TOOL` env var tells Vite which folder to build — one build per tool, output as `dist/client/<name>.html`.
