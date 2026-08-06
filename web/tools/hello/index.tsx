@@ -6,12 +6,20 @@ import {
 	CardHeader,
 	CardTitle,
 } from "@/components/ui/card.tsx";
-import { useMcpApp, useMcpState } from "@/context.tsx";
+import { useMcpApp, useMcpHostContext, useMcpState } from "@/context.tsx";
 import type { HelloInput, HelloOutput } from "../../../api/tools/hello.ts";
 
 export default function HelloPage() {
 	const state = useMcpState<HelloInput, HelloOutput>();
 	const app = useMcpApp();
+	const hostContext = useMcpHostContext();
+	const isFullscreen = hostContext?.displayMode === "fullscreen";
+
+	async function toggleDisplayMode() {
+		await app?.requestDisplayMode({
+			mode: isFullscreen ? "inline" : "fullscreen",
+		});
+	}
 
 	if (state.status === "initializing") {
 		return (
@@ -102,22 +110,27 @@ export default function HelloPage() {
 							{new Date(state.toolResult.timestamp).toLocaleString()}
 						</p>
 					) : null}
-					<Button
-						onClick={() => {
-							const name = state.toolInput?.name ?? "there";
-							app?.sendMessage({
-								role: "user",
-								content: [
-									{
-										type: "text",
-										text: `Please greet ${name} warmly and tell them a little about yourself — who you are, what you can help with, and something interesting about how you work.`,
-									},
-								],
-							});
-						}}
-					>
-						Send Message
-					</Button>
+					<div className="flex items-center justify-center gap-2">
+						<Button
+							onClick={() => {
+								const name = state.toolInput?.name ?? "there";
+								app?.sendMessage({
+									role: "user",
+									content: [
+										{
+											type: "text",
+											text: `Please greet ${name} warmly and tell them a little about yourself — who you are, what you can help with, and something interesting about how you work.`,
+										},
+									],
+								});
+							}}
+						>
+							Send Message
+						</Button>
+						<Button variant="outline" onClick={toggleDisplayMode}>
+							{isFullscreen ? "Sair da tela cheia" : "Tela cheia"}
+						</Button>
+					</div>
 				</CardContent>
 			</Card>
 		</div>

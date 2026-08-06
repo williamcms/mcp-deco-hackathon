@@ -63,7 +63,7 @@ export function McpProvider({ children }: { children: ReactNode }) {
 
 	const { app, isConnected } = useApp({
 		appInfo: { name: "MCP App", version: "1.0.0" },
-		capabilities: {},
+		capabilities: { availableDisplayModes: ["inline", "fullscreen"] },
 		onAppCreated,
 	});
 
