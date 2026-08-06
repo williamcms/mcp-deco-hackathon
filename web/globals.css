@@ -18,6 +18,14 @@
 	--primary: hsl(240 5.9% 10%);
 	--primary-foreground: hsl(0 0% 98%);
 
+	/* Chart palette (no host equivalent) */
+	--chart-1: hsl(221 83% 53%);
+	--chart-2: hsl(160 60% 39%);
+	--chart-3: hsl(35 92% 48%);
+	--chart-4: hsl(280 65% 55%);
+	--chart-5: hsl(340 75% 50%);
+	--chart-6: hsl(199 89% 42%);
+
 	/* Sidebar tokens (existing) */
 	--sidebar: hsl(0 0% 98%);
 	--sidebar-foreground: hsl(240 5.3% 26.1%);
@@ -44,6 +52,14 @@
 	/* Primary color (no host equivalent) */
 	--primary: hsl(0 0% 98%);
 	--primary-foreground: hsl(240 5.9% 10%);
+
+	/* Chart palette (no host equivalent) */
+	--chart-1: hsl(217 91% 65%);
+	--chart-2: hsl(160 65% 52%);
+	--chart-3: hsl(35 95% 62%);
+	--chart-4: hsl(280 70% 70%);
+	--chart-5: hsl(340 82% 66%);
+	--chart-6: hsl(199 90% 60%);
 
 	/* Sidebar tokens (existing) */
 	--sidebar: hsl(240 5.9% 10%);
@@ -93,6 +109,14 @@
 	--color-border: var(--color-border-primary);
 	--color-input: var(--color-border-secondary);
 	--color-ring: var(--color-ring-primary);
+
+	/* Chart palette */
+	--color-chart-1: var(--chart-1);
+	--color-chart-2: var(--chart-2);
+	--color-chart-3: var(--chart-3);
+	--color-chart-4: var(--chart-4);
+	--color-chart-5: var(--chart-5);
+	--color-chart-6: var(--chart-6);
 
 	/* Layout */
 	--radius-DEFAULT: var(--border-radius-md, 0.375rem);
