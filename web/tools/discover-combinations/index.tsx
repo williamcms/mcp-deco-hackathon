@@ -1,12 +1,25 @@
+import {
+	AlertTriangle,
+	ArrowRight,
+	Coins,
+	Info,
+	Layers,
+	MoreHorizontal,
+	Package,
+	Sparkles,
+	TrendingUp,
+	Users,
+} from "lucide-react";
+import type { ReactNode } from "react";
 import { useMemo } from "react";
 import { Badge } from "@/components/ui/badge.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import {
-	Card,
-	CardContent,
-	CardHeader,
-	CardTitle,
-} from "@/components/ui/card.tsx";
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu.tsx";
 import {
 	Table,
 	TableBody,
@@ -15,18 +28,36 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table.tsx";
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipProvider,
+	TooltipTrigger,
+} from "@/components/ui/tooltip.tsx";
 import { useMcpApp, useMcpHostContext, useMcpState } from "@/context.tsx";
 import type {
 	DiscoverCombinationsInput,
 	DiscoverCombinationsOutput,
 } from "../../../api/tools/discover-combinations.ts";
+import { buildExplainPrompt, combinationTitle } from "./explain-prompt.ts";
+import { METRICS, type MetricKey } from "./metrics-copy.ts";
 
 type Combination = DiscoverCombinationsOutput["combinations"][number];
 type Rule = DiscoverCombinationsOutput["rules"][number];
 type Sequence = DiscoverCombinationsOutput["sequences"][number];
 type ViabilityLevel = Combination["inventory"]["level"];
 
-const PERIODS = [30, 60, 90] as const;
+const PERIODS = [7, 30, 60] as const;
+
+/** Espelha SCORE_WEIGHTS e LIFT_CEILING do motor, só para rotular a conta. */
+const SCORE_WEIGHTS = { lift: 40, margin: 40, inventory: 20 } as const;
+const LIFT_CEILING = 4;
+
+const SCORE_COLORS = {
+	lift: "var(--color-chart-1)",
+	margin: "var(--color-chart-2)",
+	inventory: "var(--color-chart-3)",
+} as const;
 
 // ---------------------------------------------------------------------------
 // Formatação
@@ -41,7 +72,7 @@ function useFormatters() {
 				maximumFractionDigits: 0,
 			}),
 			int: new Intl.NumberFormat("pt-BR"),
-			decimal: new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 2 }),
+			decimal: new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 }),
 		}),
 		[],
 	);
@@ -49,6 +80,10 @@ function useFormatters() {
 
 function pct(value: number): string {
 	return `${value.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`;
+}
+
+function liftLabel(lift: number): string {
+	return `${lift.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}x`;
 }
 
 const VIABILITY_LABEL: Record<ViabilityLevel, string> = {
@@ -66,49 +101,197 @@ const VIABILITY_CLASS: Record<ViabilityLevel, string> = {
 };
 
 // ---------------------------------------------------------------------------
-// Blocos
+// Primitivas do styleguide
 // ---------------------------------------------------------------------------
 
-function Centered({ children }: { children: React.ReactNode }) {
+function Page({ children }: { children: ReactNode }) {
 	return (
-		<div className="flex items-center justify-center min-h-dvh p-6">
+		<div className="flex flex-col h-full w-full bg-background overflow-hidden">
+			<div className="flex-1 overflow-auto p-0">
+				<div className="mx-auto w-full px-4 pt-8 pb-6 md:px-10 md:pt-12 md:pb-10 max-w-[1200px]">
+					<div className="flex flex-col gap-10">{children}</div>
+				</div>
+			</div>
+		</div>
+	);
+}
+
+function Section({
+	title,
+	description,
+	action,
+	children,
+}: {
+	title?: string;
+	description?: string;
+	action?: ReactNode;
+	children: ReactNode;
+}) {
+	return (
+		<section className="flex flex-col gap-3">
+			{title ? (
+				<div className="flex items-center justify-between gap-3 px-4">
+					<div className="flex flex-col gap-1 min-w-0">
+						<h2 className="text-[15px] font-medium leading-tight">{title}</h2>
+						{description ? (
+							<p className="text-sm text-muted-foreground leading-snug">
+								{description}
+							</p>
+						) : null}
+					</div>
+					{action ? <div className="shrink-0">{action}</div> : null}
+				</div>
+			) : null}
+			{children}
+		</section>
+	);
+}
+
+function Card({
+	children,
+	className = "",
+}: {
+	children: ReactNode;
+	className?: string;
+}) {
+	return (
+		<div
+			data-slot="card"
+			className={`bg-card text-card-foreground flex flex-col rounded-xl card-shadow p-0 gap-0 overflow-hidden ${className}`}
+		>
 			{children}
 		</div>
 	);
 }
 
-function Spinner({ label }: { label: string }) {
+/** Linha de card no padrão do Studio, com separador acima quando não é a primeira. */
+function Row({
+	icon,
+	title,
+	description,
+	right,
+	first = false,
+}: {
+	icon?: ReactNode;
+	title: ReactNode;
+	description?: ReactNode;
+	right?: ReactNode;
+	first?: boolean;
+}) {
 	return (
-		<div className="flex items-center gap-3 text-muted-foreground">
-			<span className="w-4 h-4 border-2 border-muted border-t-primary rounded-full animate-spin" />
-			<span className="text-sm">{label}</span>
+		<div>
+			{first ? null : <div className="h-px bg-border mx-5" />}
+			<div className="flex items-center gap-3 px-4 py-4">
+				{icon ? (
+					<div className="size-8 shrink-0 rounded-lg bg-muted/60 flex items-center justify-center text-muted-foreground">
+						{icon}
+					</div>
+				) : null}
+				<div className="flex-1 min-w-0">
+					<div className="text-sm font-medium">{title}</div>
+					{description ? (
+						<p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+							{description}
+						</p>
+					) : null}
+				</div>
+				{right ? <div className="shrink-0">{right}</div> : null}
+			</div>
 		</div>
 	);
 }
 
+function Alert({ icon, children }: { icon: ReactNode; children: ReactNode }) {
+	return (
+		<div
+			data-slot="alert"
+			role="alert"
+			className="relative w-full rounded-lg border px-4 py-3 text-sm flex gap-3 items-center bg-card text-card-foreground border-border"
+		>
+			<span className="shrink-0 text-muted-foreground">{icon}</span>
+			<div className="text-muted-foreground flex-1 text-sm">{children}</div>
+		</div>
+	);
+}
+
+/** Ícone de ajuda que abre a explicação da métrica. */
+function InfoTip({
+	metric,
+	children,
+}: {
+	metric?: MetricKey;
+	children?: ReactNode;
+}) {
+	return (
+		<Tooltip>
+			<TooltipTrigger asChild>
+				<button
+					type="button"
+					className="inline-flex items-center text-muted-foreground/70 hover:text-foreground transition-colors align-middle"
+					aria-label="O que é isto?"
+				>
+					<Info className="size-3.5" />
+				</button>
+			</TooltipTrigger>
+			<TooltipContent className="max-w-[280px] text-left" side="top">
+				{children ?? (
+					<span className="flex flex-col gap-1">
+						<span className="font-medium">
+							{METRICS[metric as MetricKey].label}
+						</span>
+						<span className="opacity-90">
+							{METRICS[metric as MetricKey].short}
+						</span>
+					</span>
+				)}
+			</TooltipContent>
+		</Tooltip>
+	);
+}
+
+function HeadWithTip({
+	metric,
+	align = "left",
+}: {
+	metric: MetricKey;
+	align?: "left" | "right";
+}) {
+	return (
+		<span
+			className={`inline-flex items-center gap-1 ${align === "right" ? "justify-end w-full" : ""}`}
+		>
+			{METRICS[metric].label}
+			<InfoTip metric={metric} />
+		</span>
+	);
+}
+
+// ---------------------------------------------------------------------------
+// Células de dado
+// ---------------------------------------------------------------------------
+
 function Kpi({
+	icon,
 	label,
 	value,
 	hint,
 }: {
+	icon: ReactNode;
 	label: string;
 	value: string;
-	hint?: string;
+	hint: string;
 }) {
 	return (
-		<Card className="gap-2">
-			<CardHeader className="pb-0">
-				<CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-					{label}
-				</CardTitle>
-			</CardHeader>
-			<CardContent>
-				<p className="text-2xl font-semibold tabular-nums">{value}</p>
-				{hint ? (
-					<p className="text-xs text-muted-foreground mt-1">{hint}</p>
-				) : null}
-			</CardContent>
-		</Card>
+		<div className="bg-card text-card-foreground rounded-xl card-shadow px-4 py-4 flex flex-col gap-2">
+			<div className="flex items-center gap-2 text-muted-foreground">
+				<span className="size-7 shrink-0 rounded-lg bg-muted/60 flex items-center justify-center">
+					{icon}
+				</span>
+				<span className="text-xs font-medium">{label}</span>
+			</div>
+			<p className="text-2xl font-medium tabular-nums leading-none">{value}</p>
+			<p className="text-xs text-muted-foreground leading-relaxed">{hint}</p>
+		</div>
 	);
 }
 
@@ -124,7 +307,11 @@ function ProductChips({
 					{i > 0 ? (
 						<span className="text-muted-foreground text-xs">+</span>
 					) : null}
-					<Badge variant="secondary" className="font-normal">
+					<Badge
+						variant="secondary"
+						className="font-normal px-2 py-0.5 max-w-[180px] truncate block"
+						title={product.title}
+					>
 						{product.title}
 					</Badge>
 				</span>
@@ -134,46 +321,215 @@ function ProductChips({
 }
 
 /**
- * Lift é o número que mais engana quem lê rápido: 1 não é "ruim", é "nenhuma
- * relação". Marcar visualmente o que passa de 1 evita que uma coincidência
- * suba para a campanha.
+ * Lift é o número que mais engana quem lê rápido: 1,0x não é "ruim", é
+ * "nenhuma relação". A cor e a leitura em texto tiram a ambiguidade.
  */
-function LiftBadge({ lift }: { lift: number }) {
-	const strong = lift >= 1.5;
-	const neutral = lift < 1.1;
+function LiftCell({ lift }: { lift: number }) {
+	const tone =
+		lift < 1.1
+			? "text-muted-foreground border-border"
+			: lift >= 1.5
+				? "border-emerald-500/40 text-emerald-700 dark:text-emerald-400"
+				: "border-amber-500/40 text-amber-700 dark:text-amber-400";
+
+	const reading =
+		lift < 1.1
+			? "Praticamente o que o acaso já explicaria — não é padrão."
+			: `Aparece ${liftLabel(lift)} mais do que apareceria por acaso.`;
 
 	return (
-		<Badge
-			variant="outline"
-			className={
-				neutral
-					? "text-muted-foreground"
-					: strong
-						? "border-emerald-500/40 text-emerald-700 dark:text-emerald-400"
-						: "border-amber-500/40 text-amber-700 dark:text-amber-400"
-			}
-		>
-			{lift.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}x
-		</Badge>
+		<Tooltip>
+			<TooltipTrigger asChild>
+				<Badge variant="outline" className={`px-2 py-0.5 cursor-help ${tone}`}>
+					{liftLabel(lift)}
+				</Badge>
+			</TooltipTrigger>
+			<TooltipContent className="max-w-[260px] text-left">
+				<span className="flex flex-col gap-1">
+					<span className="font-medium">{reading}</span>
+					<span className="opacity-80">Ponto neutro: 1,0x.</span>
+				</span>
+			</TooltipContent>
+		</Tooltip>
 	);
 }
 
-function ViabilityBadge({
+function ViabilityCell({
 	inventory,
+	formatters,
 }: {
 	inventory: Combination["inventory"];
+	formatters: ReturnType<typeof useFormatters>;
 }) {
 	return (
-		<span className="flex flex-col gap-0.5">
-			<Badge className={VIABILITY_CLASS[inventory.level]} variant="secondary">
-				{VIABILITY_LABEL[inventory.level]}
-			</Badge>
-			{inventory.bottleneckTitle && inventory.maxBundles != null ? (
-				<span className="text-[11px] text-muted-foreground">
-					{inventory.maxBundles} kits · gargalo {inventory.bottleneckTitle}
+		<Tooltip>
+			<TooltipTrigger asChild>
+				<span className="inline-flex flex-col items-start gap-0.5 cursor-help">
+					<Badge
+						variant="secondary"
+						className={`px-2 py-0.5 ${VIABILITY_CLASS[inventory.level]}`}
+					>
+						{VIABILITY_LABEL[inventory.level]}
+					</Badge>
+					{inventory.maxBundles != null ? (
+						<span className="text-[11px] text-muted-foreground tabular-nums">
+							{formatters.int.format(inventory.maxBundles)} kits
+						</span>
+					) : null}
 				</span>
-			) : null}
-		</span>
+			</TooltipTrigger>
+			<TooltipContent className="max-w-[280px] text-left">
+				<span className="flex flex-col gap-1.5">
+					{inventory.level === "unknown" ? (
+						<span>
+							Algum produto da combinação está sem estoque informado. Isso é
+							falta de dado, não estoque zerado.
+						</span>
+					) : (
+						<>
+							<span>
+								O estoque atual monta{" "}
+								<b>{formatters.int.format(inventory.maxBundles ?? 0)} kits</b>,
+								e a campanha deve puxar{" "}
+								<b>
+									{formatters.int.format(
+										Math.round(inventory.projectedBundles),
+									)}
+								</b>{" "}
+								no horizonte configurado.
+							</span>
+							{inventory.bottleneckTitle ? (
+								<span className="opacity-80">
+									Gargalo: {inventory.bottleneckTitle}
+									{inventory.bottleneckStock != null
+										? ` (${formatters.int.format(inventory.bottleneckStock)} un.)`
+										: ""}
+								</span>
+							) : null}
+							{inventory.daysOfCover != null ? (
+								<span className="opacity-80">
+									Cobertura: {formatters.decimal.format(inventory.daysOfCover)}{" "}
+									dias no ritmo atual.
+								</span>
+							) : null}
+						</>
+					)}
+				</span>
+			</TooltipContent>
+		</Tooltip>
+	);
+}
+
+/** Score com a conta aberta: barra empilhada + decomposição no tooltip. */
+function ScoreCell({
+	combination,
+	formatters,
+}: {
+	combination: Combination;
+	formatters: ReturnType<typeof useFormatters>;
+}) {
+	const { scoreBreakdown: parts, score } = combination;
+
+	const segments = [
+		{ key: "lift" as const, label: "Lift", value: parts.lift },
+		{ key: "margin" as const, label: "Margem incr.", value: parts.margin },
+		{ key: "inventory" as const, label: "Estoque", value: parts.inventory },
+	];
+
+	return (
+		<Tooltip>
+			<TooltipTrigger asChild>
+				<span className="inline-flex flex-col items-end gap-1 cursor-help">
+					<span className="text-sm font-medium tabular-nums">{score}</span>
+					<span className="flex h-1.5 w-16 overflow-hidden rounded-full bg-muted">
+						{segments.map((segment) => (
+							<span
+								key={segment.key}
+								style={{
+									width: `${segment.value}%`,
+									backgroundColor: SCORE_COLORS[segment.key],
+								}}
+							/>
+						))}
+					</span>
+				</span>
+			</TooltipTrigger>
+			<TooltipContent className="max-w-[300px] text-left">
+				<span className="flex flex-col gap-2">
+					<span className="font-medium">Como este score foi calculado</span>
+
+					<span className="flex flex-col gap-1">
+						{segments.map((segment) => (
+							<span
+								key={segment.key}
+								className="flex items-center justify-between gap-4"
+							>
+								<span className="flex items-center gap-1.5 opacity-90">
+									<span
+										className="size-2 rounded-[2px] shrink-0"
+										style={{ backgroundColor: SCORE_COLORS[segment.key] }}
+									/>
+									{segment.label}
+								</span>
+								<span className="tabular-nums font-mono">
+									{formatters.decimal.format(segment.value)} /{" "}
+									{SCORE_WEIGHTS[segment.key]}
+								</span>
+							</span>
+						))}
+					</span>
+
+					<span className="flex items-center justify-between gap-4 border-t border-background/20 pt-1.5">
+						<span className="font-medium">Total</span>
+						<span className="tabular-nums font-mono font-medium">
+							{score} / 100
+						</span>
+					</span>
+				</span>
+			</TooltipContent>
+		</Tooltip>
+	);
+}
+
+/**
+ * Ações por combinação. "Explicar" devolve a pergunta ao host: o modelo tem o
+ * contexto da loja que esta tela não tem, então ele argumenta sobre o caso em
+ * vez de a interface tentar adivinhar um texto pronto.
+ */
+function CombinationActions({
+	combination,
+	context,
+	onExplain,
+}: {
+	combination: Combination;
+	context: { periodDays: number; ordersAnalyzed: number; campaignDays: number };
+	onExplain: (prompt: string) => void;
+}) {
+	return (
+		<DropdownMenu>
+			<DropdownMenuTrigger asChild>
+				<Button
+					variant="ghost"
+					className="size-7 p-0"
+					aria-label={`Ações para ${combinationTitle(combination)}`}
+				>
+					<MoreHorizontal className="size-4" />
+				</Button>
+			</DropdownMenuTrigger>
+			<DropdownMenuContent align="end" className="w-56">
+				<DropdownMenuItem
+					onClick={() => onExplain(buildExplainPrompt(combination, context))}
+				>
+					<Sparkles className="size-4" />
+					<span className="flex flex-col gap-0.5">
+						<span>Explicar</span>
+						<span className="text-xs text-muted-foreground">
+							Por que saem juntos e o que explorar
+						</span>
+					</span>
+				</DropdownMenuItem>
+			</DropdownMenuContent>
+		</DropdownMenu>
 	);
 }
 
@@ -181,18 +537,31 @@ function ViabilityBadge({
 // Tabelas
 // ---------------------------------------------------------------------------
 
+function Empty({ children }: { children: ReactNode }) {
+	return (
+		<div className="px-4 py-8 text-center text-sm text-muted-foreground">
+			{children}
+		</div>
+	);
+}
+
 function CombinationsTable({
 	combinations,
 	formatters,
+	context,
+	onExplain,
 }: {
 	combinations: Combination[];
 	formatters: ReturnType<typeof useFormatters>;
+	context: { periodDays: number; ordersAnalyzed: number; campaignDays: number };
+	onExplain: (prompt: string) => void;
 }) {
 	if (combinations.length === 0) {
 		return (
-			<p className="text-sm text-muted-foreground">
-				Nenhuma combinação passou dos cortes. Veja os avisos abaixo.
-			</p>
+			<Empty>
+				Nenhuma combinação passou dos cortes. Os avisos no fim da página dizem o
+				porquê.
+			</Empty>
 		);
 	}
 
@@ -200,21 +569,42 @@ function CombinationsTable({
 		<div className="overflow-x-auto">
 			<Table>
 				<TableHeader>
-					<TableRow>
-						<TableHead className="w-12">#</TableHead>
-						<TableHead>Combinação</TableHead>
-						<TableHead className="text-right">Pedidos</TableHead>
-						<TableHead className="text-right">Support</TableHead>
-						<TableHead className="text-right">Lift</TableHead>
-						<TableHead className="text-right">Margem incr.</TableHead>
-						<TableHead>Estoque</TableHead>
-						<TableHead className="text-right">Score</TableHead>
+					<TableRow className="hover:bg-transparent">
+						<TableHead className="w-10 text-xs">#</TableHead>
+						<TableHead className="text-xs">Combinação</TableHead>
+						<TableHead className="text-xs text-right">
+							<span className="inline-flex items-center gap-1 justify-end w-full">
+								Pedidos
+								<InfoTip>
+									<span>
+										Quantos pedidos da janela levaram todos os produtos desta
+										combinação juntos.
+									</span>
+								</InfoTip>
+							</span>
+						</TableHead>
+						<TableHead className="text-xs text-right">
+							<HeadWithTip metric="support" align="right" />
+						</TableHead>
+						<TableHead className="text-xs text-right">
+							<HeadWithTip metric="lift" align="right" />
+						</TableHead>
+						<TableHead className="text-xs text-right">
+							<HeadWithTip metric="incrementalMargin" align="right" />
+						</TableHead>
+						<TableHead className="text-xs">
+							<HeadWithTip metric="inventory" />
+						</TableHead>
+						<TableHead className="text-xs text-right">
+							<HeadWithTip metric="score" align="right" />
+						</TableHead>
+						<TableHead className="w-10" />
 					</TableRow>
 				</TableHeader>
 				<TableBody>
 					{combinations.map((combination, index) => (
 						<TableRow key={combination.products.map((p) => p.id).join("|")}>
-							<TableCell className="text-muted-foreground tabular-nums">
+							<TableCell className="text-muted-foreground tabular-nums text-xs">
 								{index + 1}
 							</TableCell>
 							<TableCell>
@@ -227,16 +617,21 @@ function CombinationsTable({
 								{pct(combination.support)}
 							</TableCell>
 							<TableCell className="text-right">
-								<LiftBadge lift={combination.economics.lift} />
+								<LiftCell lift={combination.economics.lift} />
 							</TableCell>
 							<TableCell className="text-right tabular-nums">
 								{combination.economics.incrementalMargin == null ? (
-									<span
-										className="text-muted-foreground"
-										title="Falta custo unitário cadastrado nas variantes"
-									>
-										—
-									</span>
+									<Tooltip>
+										<TooltipTrigger asChild>
+											<span className="text-muted-foreground cursor-help">
+												—
+											</span>
+										</TooltipTrigger>
+										<TooltipContent className="max-w-[260px] text-left">
+											Falta custo unitário cadastrado nas variantes. Sem custo
+											não há margem — e zero seria uma afirmação errada.
+										</TooltipContent>
+									</Tooltip>
 								) : (
 									formatters.money.format(
 										combination.economics.incrementalMargin,
@@ -244,10 +639,20 @@ function CombinationsTable({
 								)}
 							</TableCell>
 							<TableCell>
-								<ViabilityBadge inventory={combination.inventory} />
+								<ViabilityCell
+									inventory={combination.inventory}
+									formatters={formatters}
+								/>
 							</TableCell>
-							<TableCell className="text-right tabular-nums font-medium">
-								{combination.score}
+							<TableCell className="text-right">
+								<ScoreCell combination={combination} formatters={formatters} />
+							</TableCell>
+							<TableCell className="text-right">
+								<CombinationActions
+									combination={combination}
+									context={context}
+									onExplain={onExplain}
+								/>
 							</TableCell>
 						</TableRow>
 					))}
@@ -265,23 +670,23 @@ function RulesTable({
 	formatters: ReturnType<typeof useFormatters>;
 }) {
 	if (rules.length === 0) {
-		return (
-			<p className="text-sm text-muted-foreground">
-				Nenhuma regra passou dos cortes de confiança e lift.
-			</p>
-		);
+		return <Empty>Nenhuma regra passou dos cortes de confiança e lift.</Empty>;
 	}
 
 	return (
 		<div className="overflow-x-auto">
 			<Table>
 				<TableHeader>
-					<TableRow>
-						<TableHead>Se compra</TableHead>
-						<TableHead>Também leva</TableHead>
-						<TableHead className="text-right">Pedidos</TableHead>
-						<TableHead className="text-right">Confidence</TableHead>
-						<TableHead className="text-right">Lift</TableHead>
+					<TableRow className="hover:bg-transparent">
+						<TableHead className="text-xs">Quem leva</TableHead>
+						<TableHead className="w-8" />
+						<TableHead className="text-xs">Também leva</TableHead>
+						<TableHead className="text-xs text-right">
+							<HeadWithTip metric="confidence" align="right" />
+						</TableHead>
+						<TableHead className="text-xs text-right">
+							<HeadWithTip metric="lift" align="right" />
+						</TableHead>
 					</TableRow>
 				</TableHeader>
 				<TableBody>
@@ -294,17 +699,26 @@ function RulesTable({
 							<TableCell>
 								<ProductChips products={rule.antecedent} />
 							</TableCell>
+							<TableCell className="text-muted-foreground">
+								<ArrowRight className="size-3.5" />
+							</TableCell>
 							<TableCell>
 								<ProductChips products={rule.consequent} />
 							</TableCell>
 							<TableCell className="text-right tabular-nums">
-								{formatters.int.format(rule.supportCount)}
-							</TableCell>
-							<TableCell className="text-right tabular-nums">
-								{pct(rule.confidence)}
+								<Tooltip>
+									<TooltipTrigger asChild>
+										<span className="cursor-help">{pct(rule.confidence)}</span>
+									</TooltipTrigger>
+									<TooltipContent className="max-w-[260px] text-left">
+										{pct(rule.confidence)} de quem levou o primeiro também levou
+										o segundo, em {formatters.int.format(rule.supportCount)}{" "}
+										{rule.supportCount === 1 ? "pedido" : "pedidos"}.
+									</TooltipContent>
+								</Tooltip>
 							</TableCell>
 							<TableCell className="text-right">
-								<LiftBadge lift={rule.lift} />
+								<LiftCell lift={rule.lift} />
 							</TableCell>
 						</TableRow>
 					))}
@@ -323,10 +737,10 @@ function SequencesTable({
 }) {
 	if (sequences.length === 0) {
 		return (
-			<p className="text-sm text-muted-foreground">
+			<Empty>
 				Nenhuma sequência de recompra encontrada. Precisa de clientes
 				identificados com 2 ou mais pedidos na janela.
-			</p>
+			</Empty>
 		);
 	}
 
@@ -334,12 +748,32 @@ function SequencesTable({
 		<div className="overflow-x-auto">
 			<Table>
 				<TableHeader>
-					<TableRow>
-						<TableHead>Comprou</TableHead>
-						<TableHead>Depois compra</TableHead>
-						<TableHead className="text-right">Clientes</TableHead>
-						<TableHead className="text-right">Confidence</TableHead>
-						<TableHead className="text-right">Tempo típico</TableHead>
+					<TableRow className="hover:bg-transparent">
+						<TableHead className="text-xs">Comprou</TableHead>
+						<TableHead className="w-8" />
+						<TableHead className="text-xs">Volta para comprar</TableHead>
+						<TableHead className="text-xs text-right">
+							<span className="inline-flex items-center gap-1 justify-end w-full">
+								Clientes
+								<InfoTip>
+									<span>
+										Quantos clientes fizeram essa transição, sobre quantos
+										compraram o primeiro produto e tiveram janela para voltar.
+									</span>
+								</InfoTip>
+							</span>
+						</TableHead>
+						<TableHead className="text-xs text-right">
+							<span className="inline-flex items-center gap-1 justify-end w-full">
+								Tempo típico
+								<InfoTip>
+									<span>
+										Mediana de dias entre as duas compras. Mediana, não média,
+										para um cliente que demorou meses não distorcer o número.
+									</span>
+								</InfoTip>
+							</span>
+						</TableHead>
 					</TableRow>
 				</TableHeader>
 				<TableBody>
@@ -348,26 +782,126 @@ function SequencesTable({
 							<TableCell>
 								<ProductChips products={[sequence.from]} />
 							</TableCell>
+							<TableCell className="text-muted-foreground">
+								<ArrowRight className="size-3.5" />
+							</TableCell>
 							<TableCell>
 								<ProductChips products={[sequence.to]} />
 							</TableCell>
 							<TableCell className="text-right tabular-nums">
 								{formatters.int.format(sequence.customersWithBoth)}
 								<span className="text-muted-foreground">
-									/{formatters.int.format(sequence.customersWithFrom)}
+									{" "}
+									de {formatters.int.format(sequence.customersWithFrom)}
+								</span>
+								<span className="block text-[11px] text-muted-foreground">
+									{pct(sequence.confidence)}
 								</span>
 							</TableCell>
 							<TableCell className="text-right tabular-nums">
-								{pct(sequence.confidence)}
-							</TableCell>
-							<TableCell className="text-right tabular-nums">
-								{formatters.decimal.format(sequence.medianDaysBetween)} dias
+								~{formatters.decimal.format(sequence.medianDaysBetween)} dias
 							</TableCell>
 						</TableRow>
 					))}
 				</TableBody>
 			</Table>
 		</div>
+	);
+}
+
+// ---------------------------------------------------------------------------
+// Explicação do score
+// ---------------------------------------------------------------------------
+
+function ScoreExplainer() {
+	const axes = [
+		{
+			key: "lift" as const,
+			icon: <TrendingUp className="size-4" />,
+			title: "O padrão é real?",
+			description: `Lift normalizado pelo teto de ${LIFT_CEILING}x — acima disso a diferença costuma ser base pequena, não um padrão melhor.`,
+		},
+		{
+			key: "margin" as const,
+			icon: <Coins className="size-4" />,
+			title: "Move dinheiro?",
+			description:
+				"Margem incremental como fração da maior margem incremental desta análise. Por isso o score ordena dentro do lote, mas não compara entre lojas.",
+		},
+		{
+			key: "inventory" as const,
+			icon: <Package className="size-4" />,
+			title: "O estoque aguenta?",
+			description:
+				"Alta vale 100% dos pontos, média 70%, baixa 25%. Estoque desconhecido fica em 60% — falta de dado não é falta de produto.",
+		},
+	];
+
+	return (
+		<Card>
+			{axes.map((axis, index) => (
+				<Row
+					key={axis.key}
+					first={index === 0}
+					icon={axis.icon}
+					title={
+						<span className="flex items-center gap-2">
+							<span
+								className="size-2 rounded-[2px] shrink-0"
+								style={{ backgroundColor: SCORE_COLORS[axis.key] }}
+							/>
+							{axis.title}
+						</span>
+					}
+					description={axis.description}
+					right={
+						<Badge variant="secondary" className="px-2 py-0.5 tabular-nums">
+							até {SCORE_WEIGHTS[axis.key]} pts
+						</Badge>
+					}
+				/>
+			))}
+			<Row
+				title="Score final"
+				description="Os três eixos somados. Passe o mouse sobre qualquer score da tabela para ver a conta daquela combinação."
+				right={
+					<Badge variant="secondary" className="px-2 py-0.5 tabular-nums">
+						0 a 100
+					</Badge>
+				}
+			/>
+		</Card>
+	);
+}
+
+function Glossary() {
+	const keys: MetricKey[] = [
+		"support",
+		"confidence",
+		"lift",
+		"incrementalMargin",
+		"inventory",
+		"sequence",
+	];
+
+	return (
+		<Card>
+			{keys.map((key, index) => (
+				<Row
+					key={key}
+					first={index === 0}
+					title={METRICS[key].label}
+					description={
+						<>
+							{METRICS[key].long}
+							<span className="block mt-1 text-muted-foreground/80">
+								{METRICS[key].reading}
+							</span>
+						</>
+					}
+				/>
+			))}
+		</Card>
 	);
 }
 
@@ -403,226 +937,269 @@ export default function DiscoverCombinationsPage() {
 		});
 	}
 
-	if (state.status === "initializing") {
+	function askHost(prompt: string) {
+		app?.sendMessage({
+			role: "user",
+			content: [{ type: "text", text: prompt }],
+		});
+	}
+
+	if (state.status === "initializing" || state.status === "tool-input") {
 		return (
-			<Centered>
-				<Spinner label="Conectando ao host..." />
-			</Centered>
+			<Page>
+				<div className="flex items-center gap-3 text-muted-foreground py-16 justify-center">
+					<span className="w-4 h-4 border-2 border-muted border-t-primary rounded-full animate-spin" />
+					<span className="text-sm">
+						{state.status === "initializing"
+							? "Conectando ao host..."
+							: "Minerando combinações..."}
+					</span>
+				</div>
+			</Page>
 		);
 	}
 
 	if (state.status === "connected") {
 		return (
-			<Centered>
-				<Card className="w-full max-w-md text-center">
-					<CardHeader>
-						<CardTitle>Descoberta de combinações</CardTitle>
-					</CardHeader>
-					<CardContent className="space-y-4">
-						<p className="text-sm text-muted-foreground">
-							Conectado. Rode a tool{" "}
-							<Badge variant="secondary">discover_combinations</Badge> para
-							minerar as cestas da loja.
-						</p>
-						<div className="flex items-center justify-center gap-2">
-							{PERIODS.map((days) => (
-								<Button
-									key={days}
-									variant="outline"
-									size="sm"
-									onClick={() => requestPeriod(days)}
-								>
-									{days} dias
-								</Button>
-							))}
-						</div>
-					</CardContent>
+			<Page>
+				<div className="text-xl font-medium">Descoberta de combinações</div>
+				<Card>
+					<Row
+						first
+						icon={<Layers className="size-4" />}
+						title="Pronto para analisar"
+						description="Escolha a janela de pedidos para minerar as combinações da loja."
+						right={
+							<div className="flex items-center gap-1.5">
+								{PERIODS.map((days) => (
+									<Button
+										key={days}
+										variant="outline"
+										className="h-7 gap-1.5 px-2.5 text-xs"
+										onClick={() => requestPeriod(days)}
+									>
+										{days} dias
+									</Button>
+								))}
+							</div>
+						}
+					/>
 				</Card>
-			</Centered>
-		);
-	}
-
-	if (state.status === "tool-input") {
-		return (
-			<Centered>
-				<Spinner label="Minerando combinações..." />
-			</Centered>
+			</Page>
 		);
 	}
 
 	if (state.status === "tool-cancelled") {
 		return (
-			<Centered>
-				<p className="text-sm text-muted-foreground">Análise cancelada.</p>
-			</Centered>
+			<Page>
+				<Alert icon={<AlertTriangle className="size-4" />}>
+					Análise cancelada.
+				</Alert>
+			</Page>
 		);
 	}
 
 	if (state.status === "error") {
 		return (
-			<Centered>
-				<Card className="w-full max-w-lg border-destructive">
-					<CardHeader>
-						<CardTitle className="text-destructive">Falha na análise</CardTitle>
-					</CardHeader>
-					<CardContent className="space-y-3">
-						<p className="text-sm text-destructive whitespace-pre-wrap">
-							{state.error ?? "Erro desconhecido"}
-						</p>
-						<p className="text-xs text-muted-foreground">
-							Confira o domínio da loja, o access token e os escopos
-							read_orders, read_products, read_inventory e read_customers na
-							configuração da app.
-						</p>
-					</CardContent>
+			<Page>
+				<div className="text-xl font-medium">Descoberta de combinações</div>
+				<Card className="border border-destructive/40">
+					<Row
+						first
+						icon={<AlertTriangle className="size-4" />}
+						title="Falha na análise"
+						description={
+							<>
+								<span className="block text-destructive whitespace-pre-wrap">
+									{state.error ?? "Erro desconhecido"}
+								</span>
+								<span className="block mt-1">
+									Confira o domínio da loja, o access token e os escopos
+									read_orders, read_products, read_inventory e read_customers.
+								</span>
+							</>
+						}
+					/>
 				</Card>
-			</Centered>
+			</Page>
 		);
 	}
 
 	const result = state.toolResult;
 	if (!result) {
 		return (
-			<Centered>
-				<Spinner label="Aguardando resultado..." />
-			</Centered>
+			<Page>
+				<Alert icon={<Info className="size-4" />}>
+					Aguardando resultado...
+				</Alert>
+			</Page>
 		);
 	}
 
 	const { summary, thresholds, period } = result;
-	const topMargin = result.combinations.reduce(
+
+	const totalIncremental = result.combinations.reduce(
 		(total, combination) =>
 			total + (combination.economics.incrementalMargin ?? 0),
 		0,
 	);
+	const best = result.combinations[0];
+	const attachRate =
+		summary.ordersAnalyzed > 0
+			? (summary.multiItemOrders / summary.ordersAnalyzed) * 100
+			: 0;
 
 	return (
-		<div className="p-4 sm:p-6 space-y-6">
-			<header className="flex flex-wrap items-start justify-between gap-3">
-				<div>
-					<h1 className="text-xl font-semibold">Descoberta de combinações</h1>
-					<p className="text-sm text-muted-foreground">
-						{period.days} dias · motor{" "}
-						<Badge variant="outline" className="font-mono text-[11px]">
-							{result.engine}
-						</Badge>{" "}
-						· corte de {thresholds.minSupportCount}{" "}
-						{thresholds.minSupportCount === 1 ? "pedido" : "pedidos"} · até{" "}
-						{thresholds.maxItemsetSize} produtos por combinação
-					</p>
-				</div>
-				<div className="flex items-center gap-2">
-					{PERIODS.map((days) => (
+		<TooltipProvider delayDuration={150}>
+			<Page>
+				<div className="flex flex-wrap items-center justify-between gap-3">
+					<div className="text-xl font-medium min-w-0">
+						Descoberta de combinações
+					</div>
+					<div className="flex items-center gap-1.5">
+						{PERIODS.map((days) => (
+							<Button
+								key={days}
+								variant={period.days === days ? "default" : "outline"}
+								className="h-7 gap-1.5 px-2.5 text-xs"
+								onClick={() => requestPeriod(days)}
+							>
+								{days} dias
+							</Button>
+						))}
 						<Button
-							key={days}
-							variant={period.days === days ? "default" : "outline"}
-							size="sm"
-							onClick={() => requestPeriod(days)}
+							variant="ghost"
+							className="h-7 gap-1.5 px-2.5 text-xs"
+							onClick={toggleDisplayMode}
 						>
-							{days}d
+							{isFullscreen ? "Reduzir" : "Expandir"}
 						</Button>
-					))}
-					<Button variant="ghost" size="sm" onClick={toggleDisplayMode}>
-						{isFullscreen ? "Reduzir" : "Expandir"}
-					</Button>
+					</div>
 				</div>
-			</header>
 
-			<section className="grid gap-3 grid-cols-2 lg:grid-cols-4">
-				<Kpi
-					label="Combinações"
-					value={formatters.int.format(summary.combinationsFound)}
-					hint={`de ${formatters.int.format(summary.distinctProducts)} produtos distintos`}
-				/>
-				<Kpi
-					label="Margem incremental"
-					value={formatters.money.format(topMargin)}
-					hint="soma das combinações listadas, descontado o acaso"
-				/>
-				<Kpi
-					label="Pedidos com 2+ itens"
-					value={formatters.int.format(summary.multiItemOrders)}
-					hint={`de ${formatters.int.format(summary.ordersAnalyzed)} analisados`}
-				/>
-				<Kpi
-					label="Clientes recorrentes"
-					value={formatters.int.format(summary.customersAnalyzed)}
-					hint={`${formatters.int.format(summary.sequencesFound)} sequências de recompra`}
-				/>
-			</section>
+				<Alert icon={<Layers className="size-4" />}>
+					<span>
+						{formatters.int.format(summary.ordersAnalyzed)} pedidos dos últimos{" "}
+						{period.days} dias, minerados com{" "}
+						<b className="text-foreground">{result.engine}</b>. Uma combinação
+						só entra se aparecer em pelo menos{" "}
+						<b className="text-foreground">
+							{thresholds.minSupportCount}{" "}
+							{thresholds.minSupportCount === 1 ? "pedido" : "pedidos"}
+						</b>
+						, e o estoque é medido contra uma campanha de {period.campaignDays}{" "}
+						dias.
+					</span>
+				</Alert>
 
-			<Card>
-				<CardHeader>
-					<CardTitle className="text-base">
-						Combinações rankeadas
-						<span className="ml-2 text-xs font-normal text-muted-foreground">
-							score = lift + margem incremental + viabilidade de estoque
-						</span>
-					</CardTitle>
-				</CardHeader>
-				<CardContent>
-					<CombinationsTable
-						combinations={result.combinations}
-						formatters={formatters}
-					/>
-				</CardContent>
-			</Card>
+				<Section>
+					<div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
+						<Kpi
+							icon={<Layers className="size-3.5" />}
+							label="Combinações"
+							value={formatters.int.format(summary.combinationsFound)}
+							hint={
+								best
+									? `A melhor tem score ${best.score} e lift ${liftLabel(best.economics.lift)}.`
+									: "Nenhuma passou dos cortes configurados."
+							}
+						/>
+						<Kpi
+							icon={<Coins className="size-3.5" />}
+							label="Margem incremental"
+							value={formatters.money.format(totalIncremental)}
+							hint="Soma das combinações listadas, já descontado o que o acaso explicaria."
+						/>
+						<Kpi
+							icon={<Package className="size-3.5" />}
+							label="Pedidos com 2+ itens"
+							value={pct(attachRate)}
+							hint={`${formatters.int.format(summary.multiItemOrders)} de ${formatters.int.format(summary.ordersAnalyzed)} — só esses podem formar combinação.`}
+						/>
+						<Kpi
+							icon={<Users className="size-3.5" />}
+							label="Clientes recorrentes"
+							value={formatters.int.format(summary.customersAnalyzed)}
+							hint={`${formatters.int.format(summary.sequencesFound)} ${summary.sequencesFound === 1 ? "sequência" : "sequências"} de recompra encontradas.`}
+						/>
+					</div>
+				</Section>
 
-			<div className="grid gap-6 xl:grid-cols-2">
-				<Card>
-					<CardHeader>
-						<CardTitle className="text-base">
-							Regras de associação
-							<span className="ml-2 text-xs font-normal text-muted-foreground">
-								mesmo pedido
-							</span>
-						</CardTitle>
-					</CardHeader>
-					<CardContent>
+				<Section
+					title="Combinações rankeadas"
+					description="Produtos que saem juntos no mesmo pedido, ordenados pelo score. Passe o mouse em qualquer número para entender o que ele significa, ou use o menu da linha para pedir uma explicação."
+				>
+					<Card>
+						<CombinationsTable
+							combinations={result.combinations}
+							formatters={formatters}
+							context={{
+								periodDays: period.days,
+								ordersAnalyzed: summary.ordersAnalyzed,
+								campaignDays: period.campaignDays,
+							}}
+							onExplain={askHost}
+						/>
+					</Card>
+				</Section>
+
+				<Section
+					title="Como o score é calculado"
+					description="Três perguntas, com pesos diferentes. Nenhum eixo sozinho decide: um lift altíssimo em cima de estoque zerado não vira campanha."
+				>
+					<ScoreExplainer />
+				</Section>
+
+				<Section
+					title="Regras de associação"
+					description="A leitura direcional das combinações, dentro do mesmo pedido. Quem leva o produto da esquerda tende a levar o da direita."
+				>
+					<Card>
 						<RulesTable rules={result.rules} formatters={formatters} />
-					</CardContent>
-				</Card>
+					</Card>
+				</Section>
 
-				<Card>
-					<CardHeader>
-						<CardTitle className="text-base">
-							Sequência de compra
-							<span className="ml-2 text-xs font-normal text-muted-foreground">
-								pedidos seguintes
-							</span>
-						</CardTitle>
-					</CardHeader>
-					<CardContent>
+				<Section
+					title="Sequência de compra"
+					description="O que o cliente volta para comprar em um pedido seguinte, e quanto tempo costuma levar. É gatilho de recompra, não kit."
+				>
+					<Card>
 						<SequencesTable
 							sequences={result.sequences}
 							formatters={formatters}
 						/>
-					</CardContent>
-				</Card>
-			</div>
+					</Card>
+				</Section>
 
-			{result.warnings.length > 0 ? (
-				<Card className="border-amber-500/40">
-					<CardHeader>
-						<CardTitle className="text-base">
-							Avisos ({result.warnings.length})
-						</CardTitle>
-					</CardHeader>
-					<CardContent>
-						<ul className="space-y-2">
-							{result.warnings.map((warning) => (
-								<li
+				<Section
+					title="Como ler estes números"
+					description="O que cada métrica mede e onde ela engana."
+				>
+					<Glossary />
+				</Section>
+
+				{result.warnings.length > 0 ? (
+					<Section
+						title={`Avisos (${result.warnings.length})`}
+						description="Limites da análise que afetam como estes números devem ser lidos."
+					>
+						<Card className="border border-amber-500/30">
+							{result.warnings.map((warning, index) => (
+								<Row
 									key={warning}
-									className="text-sm text-muted-foreground flex gap-2"
-								>
-									<span className="text-amber-600 dark:text-amber-400">•</span>
-									{warning}
-								</li>
+									first={index === 0}
+									icon={<AlertTriangle className="size-4" />}
+									title={
+										<span className="font-normal text-muted-foreground">
+											{warning}
+										</span>
+									}
+								/>
 							))}
-						</ul>
-					</CardContent>
-				</Card>
-			) : null}
-		</div>
+						</Card>
+					</Section>
+				) : null}
+			</Page>
+		</TooltipProvider>
 	);
 }

@@ -1,4 +1,8 @@
-import { type AssociationRule, type MinedItemset, itemsetKey } from "./types.ts";
+import {
+	type AssociationRule,
+	itemsetKey,
+	type MinedItemset,
+} from "./types.ts";
 
 export interface RuleOptions {
 	/** Total de transações — denominador de todos os suportes. */
@@ -43,7 +47,8 @@ export function generateRules(
 			// Só acontece se a mineração tiver sido cortada por maxSize de um
 			// jeito que deixe subconjuntos de fora. Pular é mais honesto que
 			// estimar.
-			if (antecedentCount === undefined || consequentCount === undefined) continue;
+			if (antecedentCount === undefined || consequentCount === undefined)
+				continue;
 
 			const antecedentSupport = antecedentCount / transactionCount;
 			const consequentSupport = consequentCount / transactionCount;
@@ -67,7 +72,8 @@ export function generateRules(
 	}
 
 	rules.sort(
-		(a, b) => b.lift - a.lift || b.confidence - a.confidence || b.support - a.support,
+		(a, b) =>
+			b.lift - a.lift || b.confidence - a.confidence || b.support - a.support,
 	);
 	return rules;
 }

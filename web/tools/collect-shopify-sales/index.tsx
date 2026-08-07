@@ -5,10 +5,7 @@ import {
 	Bar,
 	BarChart,
 	CartesianGrid,
-	Cell,
 	LabelList,
-	Pie,
-	PieChart,
 	Tooltip,
 	XAxis,
 	YAxis,
@@ -32,19 +29,10 @@ import {
 } from "@/components/ui/table.tsx";
 import { useMcpApp, useMcpHostContext, useMcpState } from "@/context.tsx";
 import type {
+	CollectedItem,
 	CollectShopifySalesInput,
 	CollectShopifySalesOutput,
-	CollectedItem,
 } from "../../../api/tools/collect-shopify-sales.ts";
-
-const PALETTE = [
-	"var(--color-chart-1)",
-	"var(--color-chart-2)",
-	"var(--color-chart-3)",
-	"var(--color-chart-4)",
-	"var(--color-chart-5)",
-	"var(--color-chart-6)",
-];
 
 const PERIODS = [30, 60, 90] as const;
 
@@ -54,7 +42,12 @@ const PERIODS = [30, 60, 90] as const;
 
 function makeCurrencyFormatter(currency: string, compact: boolean) {
 	const options: Intl.NumberFormatOptions = compact
-		? { style: "currency", currency, notation: "compact", maximumFractionDigits: 1 }
+		? {
+				style: "currency",
+				currency,
+				notation: "compact",
+				maximumFractionDigits: 1,
+			}
 		: { style: "currency", currency, maximumFractionDigits: 2 };
 	try {
 		return new Intl.NumberFormat("pt-BR", options);
@@ -157,7 +150,10 @@ function ChartTip({
 		<div className="grid min-w-[9rem] gap-1.5 rounded-lg border border-border/50 bg-background px-2.5 py-1.5 text-xs shadow-xl">
 			{title ? <div className="font-medium">{title}</div> : null}
 			{rows.map((row) => (
-				<div key={row.label} className="flex items-center justify-between gap-3">
+				<div
+					key={row.label}
+					className="flex items-center justify-between gap-3"
+				>
 					<span className="flex items-center gap-1.5 text-muted-foreground">
 						{row.color ? (
 							<span
@@ -167,7 +163,9 @@ function ChartTip({
 						) : null}
 						{row.label}
 					</span>
-					<span className="font-mono font-medium tabular-nums">{row.value}</span>
+					<span className="font-mono font-medium tabular-nums">
+						{row.value}
+					</span>
 				</div>
 			))}
 		</div>
@@ -251,9 +249,7 @@ export default function CollectShopifySalesPage() {
 			<Centered>
 				<Card className="w-full max-w-lg border-destructive">
 					<CardHeader>
-						<CardTitle className="text-destructive">
-							Falha na coleta
-						</CardTitle>
+						<CardTitle className="text-destructive">Falha na coleta</CardTitle>
 					</CardHeader>
 					<CardContent className="space-y-3">
 						<p className="text-sm text-destructive whitespace-pre-wrap">
@@ -290,7 +286,9 @@ export default function CollectShopifySalesPage() {
 	if (state.status === "tool-input") {
 		return (
 			<Centered>
-				<Spinner label={`Coletando pedidos dos últimos ${requestedPeriod} dias...`} />
+				<Spinner
+					label={`Coletando pedidos dos últimos ${requestedPeriod} dias...`}
+				/>
 			</Centered>
 		);
 	}
@@ -420,10 +418,7 @@ function Dashboard({
 					<CardTitle className="text-sm font-medium">Receita por dia</CardTitle>
 				</CardHeader>
 				<CardContent>
-					<ChartContainer
-						config={{}}
-						className="aspect-auto h-[240px] w-full"
-					>
+					<ChartContainer config={{}} className="aspect-auto h-[240px] w-full">
 						<AreaChart data={data.byDay} margin={{ left: 4, right: 8, top: 8 }}>
 							<defs>
 								<linearGradient id="revenueFill" x1="0" y1="0" x2="0" y2="1">
@@ -494,134 +489,6 @@ function Dashboard({
 					</ChartContainer>
 				</CardContent>
 			</Card>
-
-			{/* Canal e região */}
-			<div className="grid gap-4 lg:grid-cols-2">
-				<Card>
-					<CardHeader>
-						<CardTitle className="text-sm font-medium">
-							Receita por canal de venda
-						</CardTitle>
-					</CardHeader>
-					<CardContent>
-						<ChartContainer
-							config={{}}
-							className="aspect-auto h-[240px] w-full"
-						>
-							<PieChart>
-								<Tooltip
-									content={({ active, payload }) => {
-										const slice = payload?.[0]?.payload as
-											| CollectShopifySalesOutput["byChannel"][number]
-											| undefined;
-										if (!slice) return null;
-										return (
-											<ChartTip
-												active={active}
-												title={slice.name}
-												rows={[
-													{ label: "Receita", value: money.format(slice.revenue) },
-													{ label: "Pedidos", value: int.format(slice.orders) },
-													{ label: "Margem", value: formatPct(slice.marginPct) },
-												]}
-											/>
-										);
-									}}
-								/>
-								<Pie
-									data={data.byChannel}
-									dataKey="revenue"
-									nameKey="name"
-									innerRadius={52}
-									outerRadius={88}
-									paddingAngle={2}
-								>
-									{data.byChannel.map((entry, index) => (
-										<Cell
-											key={entry.name}
-											fill={PALETTE[index % PALETTE.length]}
-										/>
-									))}
-								</Pie>
-							</PieChart>
-						</ChartContainer>
-						<div className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5">
-							{data.byChannel.map((entry, index) => (
-								<span
-									key={entry.name}
-									className="flex items-center gap-1.5 text-xs text-muted-foreground"
-								>
-									<span
-										className="h-2 w-2 rounded-[2px]"
-										style={{ backgroundColor: PALETTE[index % PALETTE.length] }}
-									/>
-									{entry.name}
-								</span>
-							))}
-						</div>
-					</CardContent>
-				</Card>
-
-				<Card>
-					<CardHeader>
-						<CardTitle className="text-sm font-medium">
-							Receita por região
-						</CardTitle>
-					</CardHeader>
-					<CardContent>
-						<ChartContainer
-							config={{}}
-							className="aspect-auto h-[280px] w-full"
-						>
-							<BarChart
-								data={data.byRegion}
-								layout="vertical"
-								margin={{ left: 4, right: 24 }}
-							>
-								<CartesianGrid horizontal={false} strokeDasharray="3 3" />
-								<XAxis
-									type="number"
-									tickFormatter={(value: number) => moneyCompact.format(value)}
-									tickLine={false}
-									axisLine={false}
-								/>
-								<YAxis
-									type="category"
-									dataKey="name"
-									tickLine={false}
-									axisLine={false}
-									width={88}
-								/>
-								<Tooltip
-									cursor={{ fill: "var(--color-muted)" }}
-									content={({ active, payload }) => {
-										const bar = payload?.[0]?.payload as
-											| CollectShopifySalesOutput["byRegion"][number]
-											| undefined;
-										if (!bar) return null;
-										return (
-											<ChartTip
-												active={active}
-												title={bar.name}
-												rows={[
-													{ label: "Receita", value: money.format(bar.revenue) },
-													{ label: "Pedidos", value: int.format(bar.orders) },
-													{ label: "Unidades", value: int.format(bar.units) },
-												]}
-											/>
-										);
-									}}
-								/>
-								<Bar
-									dataKey="revenue"
-									fill="var(--color-chart-2)"
-									radius={[0, 4, 4, 0]}
-								/>
-							</BarChart>
-						</ChartContainer>
-					</CardContent>
-				</Card>
-			</div>
 
 			{/* Categoria */}
 			<Card>

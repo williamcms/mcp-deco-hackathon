@@ -1,4 +1,4 @@
-import { type MinedItemset, itemsetKey } from "./types.ts";
+import { itemsetKey, type MinedItemset } from "./types.ts";
 
 /**
  * Apriori clássico (Agrawal & Srikant, 1994).
@@ -42,7 +42,9 @@ export function apriori(
 
 	// Só itens frequentes importam daqui pra frente: descartar o resto encolhe
 	// as transações e barateia toda a contagem seguinte.
-	const frequentItems = new Set(previousLevel.map((entry) => entry.items[0] as number));
+	const frequentItems = new Set(
+		previousLevel.map((entry) => entry.items[0] as number),
+	);
 	const filtered: Set<number>[] = [];
 	for (const transaction of transactions) {
 		const kept = new Set<number>();
@@ -53,7 +55,9 @@ export function apriori(
 	}
 
 	for (let k = 2; k <= maxSize; k++) {
-		const previousKeys = new Set(previousLevel.map((entry) => itemsetKey(entry.items)));
+		const previousKeys = new Set(
+			previousLevel.map((entry) => itemsetKey(entry.items)),
+		);
 		const candidates = generateCandidates(previousLevel, k, previousKeys);
 		if (candidates.length === 0) break;
 
@@ -115,7 +119,8 @@ function generateCandidates(
 			if (leftTail >= rightTail) continue;
 
 			const candidate = [...left, rightTail];
-			if (allSubsetsFrequent(candidate, previousKeys)) candidates.push(candidate);
+			if (allSubsetsFrequent(candidate, previousKeys))
+				candidates.push(candidate);
 		}
 	}
 
@@ -142,7 +147,10 @@ function allSubsetsFrequent(
 	return true;
 }
 
-function containsAll(transaction: ReadonlySet<number>, items: readonly number[]): boolean {
+function containsAll(
+	transaction: ReadonlySet<number>,
+	items: readonly number[],
+): boolean {
 	for (const item of items) {
 		if (!transaction.has(item)) return false;
 	}

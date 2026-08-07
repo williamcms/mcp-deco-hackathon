@@ -77,7 +77,9 @@ export function buildTransactions(
 
 			const unitCostAmount = line.variant?.inventoryItem?.unitCost?.amount;
 			const cost =
-				unitCostAmount != null ? toNumber(unitCostAmount) * line.quantity : null;
+				unitCostAmount != null
+					? toNumber(unitCostAmount) * line.quantity
+					: null;
 
 			const existing = lines.get(productId);
 			if (existing) {
@@ -85,9 +87,11 @@ export function buildTransactions(
 				existing.paid += paid;
 				// Custo parcial é pior que custo ausente: somar só metade das
 				// variantes daria uma margem inflada que parece confiável.
-				existing.cost = existing.cost != null && cost != null ? existing.cost + cost : null;
+				existing.cost =
+					existing.cost != null && cost != null ? existing.cost + cost : null;
 				if (line.variant?.inventoryQuantity != null) {
-					existing.stock = (existing.stock ?? 0) + line.variant.inventoryQuantity;
+					existing.stock =
+						(existing.stock ?? 0) + line.variant.inventoryQuantity;
 				}
 			} else {
 				lines.set(productId, {
@@ -137,7 +141,8 @@ export function buildTransactions(
 			// Estoque é uma foto do presente: o maior valor visto é o mais
 			// completo, já que cada pedido só enxerga as variantes que vendeu.
 			if (line.stock != null) {
-				stat.stock = stat.stock == null ? line.stock : Math.max(stat.stock, line.stock);
+				stat.stock =
+					stat.stock == null ? line.stock : Math.max(stat.stock, line.stock);
 			}
 		}
 

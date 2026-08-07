@@ -96,14 +96,16 @@ export function computeEconomics(
 	let independence = 1;
 	for (const productId of productIds) {
 		const stat = stats.get(productId);
-		independence *= stat && transactionCount > 0 ? stat.orders / transactionCount : 0;
+		independence *=
+			stat && transactionCount > 0 ? stat.orders / transactionCount : 0;
 	}
 	const expectedOrders = independence * transactionCount;
 
 	const lift = expectedOrders > 0 ? coOccurrenceOrders / expectedOrders : 0;
 	const incrementalOrders = Math.max(0, coOccurrenceOrders - expectedOrders);
 
-	const bundleRevenue = coOccurrenceOrders > 0 ? revenue / coOccurrenceOrders : 0;
+	const bundleRevenue =
+		coOccurrenceOrders > 0 ? revenue / coOccurrenceOrders : 0;
 	const hasCost = revenueWithCost > 0;
 	const bundleMargin = hasCost
 		? (revenueWithCost - cost) / (coOccurrenceOrders || 1)
@@ -151,12 +153,16 @@ export function computeViability(
 		for (const productId of productIds) {
 			const line = transaction.lines.get(productId);
 			if (!line) continue;
-			unitsInBundle.set(productId, (unitsInBundle.get(productId) ?? 0) + line.quantity);
+			unitsInBundle.set(
+				productId,
+				(unitsInBundle.get(productId) ?? 0) + line.quantity,
+			);
 		}
 	}
 
 	const ordersPerDay = periodDays > 0 ? transactionCount / periodDays : 0;
-	const bundleRate = transactionCount > 0 ? coOccurrenceOrders / transactionCount : 0;
+	const bundleRate =
+		transactionCount > 0 ? coOccurrenceOrders / transactionCount : 0;
 	const bundlesPerDay = bundleRate * ordersPerDay;
 	const projectedBundles = round(bundlesPerDay * campaignDays);
 
@@ -198,7 +204,8 @@ export function computeViability(
 		};
 	}
 
-	const daysOfCover = bundlesPerDay > 0 ? round(maxBundles / bundlesPerDay) : null;
+	const daysOfCover =
+		bundlesPerDay > 0 ? round(maxBundles / bundlesPerDay) : null;
 
 	// Folga de 2x é o que separa "dá para anunciar" de "vai furar no meio".
 	let level: ViabilityLevel;

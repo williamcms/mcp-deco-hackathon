@@ -2,7 +2,7 @@ import { createTool } from "@decocms/runtime/tools";
 import { z } from "zod";
 import { discoverCombinations } from "../analysis/discover.ts";
 import { resolveCredentials } from "../shopify/client.ts";
-import { type ShopifyOrder, fetchOrders } from "../shopify/orders.ts";
+import { fetchOrders, type ShopifyOrder } from "../shopify/orders.ts";
 import type { Env } from "../types/env.ts";
 
 export const DISCOVER_COMBINATIONS_RESOURCE_URI =
@@ -14,9 +14,9 @@ export const DISCOVER_COMBINATIONS_RESOURCE_URI =
 
 export const discoverCombinationsInputSchema = z.object({
 	periodDays: z
-		.union([z.literal(30), z.literal(60), z.literal(90)])
+		.union([z.literal(7), z.literal(30), z.literal(60)])
 		.optional()
-		.describe("Janela de pedidos a analisar em dias: 30, 60 ou 90. Padrão: 60."),
+		.describe("Janela de pedidos a analisar em dias: 7, 30 ou 60. Padrão: 60."),
 	campaignDays: z
 		.number()
 		.int()
@@ -67,7 +67,9 @@ export const discoverCombinationsInputSchema = z.object({
 		.min(2)
 		.max(5)
 		.optional()
-		.describe("Tamanho máximo da combinação, em número de produtos. Padrão: 3."),
+		.describe(
+			"Tamanho máximo da combinação, em número de produtos. Padrão: 3.",
+		),
 	maxCombinations: z
 		.number()
 		.int()
@@ -131,7 +133,9 @@ const combinationSchema = z.object({
 	support: z.number().describe("Support em % do total de pedidos"),
 	economics: z.object({
 		coOccurrenceOrders: z.number(),
-		bundleRevenue: z.number().describe("Receita média da combinação por pedido"),
+		bundleRevenue: z
+			.number()
+			.describe("Receita média da combinação por pedido"),
 		bundleMargin: z.number().nullable(),
 		bundleMarginPct: z.number().nullable(),
 		marginCoverage: z
@@ -152,11 +156,25 @@ const combinationSchema = z.object({
 		bottleneckId: z.string().nullable(),
 		bottleneckTitle: z.string().nullable(),
 		bottleneckStock: z.number().nullable(),
-		maxBundles: z.number().nullable().describe("Kits que o estoque atual sustenta"),
-		projectedBundles: z.number().describe("Kits esperados no horizonte da campanha"),
+		maxBundles: z
+			.number()
+			.nullable()
+			.describe("Kits que o estoque atual sustenta"),
+		projectedBundles: z
+			.number()
+			.describe("Kits esperados no horizonte da campanha"),
 		daysOfCover: z.number().nullable(),
 	}),
 	score: z.number().describe("0 a 100: força estatística, dinheiro e estoque"),
+	scoreBreakdown: z
+		.object({
+			lift: z.number().describe("Pontos vindos do lift (máx. 40)"),
+			margin: z
+				.number()
+				.describe("Pontos vindos da margem incremental (máx. 40)"),
+			inventory: z.number().describe("Pontos vindos da viabilidade (máx. 20)"),
+		})
+		.describe("Decomposição do score — os três somados dão o score final"),
 });
 
 const ruleSchema = z.object({

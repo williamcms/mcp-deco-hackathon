@@ -3,10 +3,10 @@ import { apriori } from "./apriori.ts";
 import { fpGrowth } from "./fpgrowth.ts";
 import {
 	type CombinationEconomics,
-	type EconomicsOptions,
-	type InventoryViability,
 	computeEconomics,
 	computeViability,
+	type EconomicsOptions,
+	type InventoryViability,
 } from "./metrics.ts";
 import { generateRules } from "./rules.ts";
 import { analyzeSequences } from "./sequence.ts";
@@ -40,6 +40,25 @@ export interface ProductRef {
 	category: string;
 }
 
+/**
+ * Score aberto: quanto cada eixo contribuiu, em pontos já ponderados.
+ *
+ * Existe para a interface poder mostrar a conta em vez de um número mágico.
+ * Se a UI recalculasse isso por fora, os pesos passariam a viver em dois
+ * lugares e um dia divergiriam em silêncio.
+ */
+export interface ScoreBreakdown {
+	/** Contribuição do lift, de 0 a WEIGHTS.lift. */
+	lift: number;
+	/** Contribuição da margem incremental, de 0 a WEIGHTS.margin. */
+	margin: number;
+	/** Contribuição da viabilidade de estoque, de 0 a WEIGHTS.inventory. */
+	inventory: number;
+}
+
+/** Pesos de cada eixo no score final. Somam 100. */
+export const SCORE_WEIGHTS = { lift: 40, margin: 40, inventory: 20 } as const;
+
 export interface DiscoveredCombination {
 	products: ProductRef[];
 	size: number;
@@ -50,6 +69,7 @@ export interface DiscoveredCombination {
 	inventory: InventoryViability;
 	/** 0..100. Ranking composto de força estatística, dinheiro e estoque. */
 	score: number;
+	scoreBreakdown: ScoreBreakdown;
 }
 
 export interface DiscoveredRule {
@@ -257,6 +277,7 @@ function buildCombinations(
 			economics,
 			inventory,
 			score: 0,
+			scoreBreakdown: { lift: 0, margin: 0, inventory: 0 },
 		});
 	}
 
@@ -268,10 +289,16 @@ function buildCombinations(
 	);
 
 	for (const candidate of candidates) {
-		candidate.score = scoreOf(candidate, maxIncremental);
+		const breakdown = scoreOf(candidate, maxIncremental);
+		candidate.scoreBreakdown = breakdown;
+		candidate.score = Math.round(
+			breakdown.lift + breakdown.margin + breakdown.inventory,
+		);
 	}
 
-	candidates.sort((a, b) => b.score - a.score || b.supportCount - a.supportCount);
+	candidates.sort(
+		(a, b) => b.score - a.score || b.supportCount - a.supportCount,
+	);
 	return candidates.slice(0, limit);
 }
 
@@ -284,24 +311,35 @@ const VIABILITY_WEIGHT: Record<InventoryViability["level"], number> = {
 	unknown: 0.6,
 };
 
+/** Lift a partir do qual a normalização satura em nota cheia. */
+export const LIFT_CEILING = 4;
+
 /**
  * Score 0..100 que mistura as três perguntas que decidem uma campanha:
  * o padrão é real (lift)? move dinheiro (margem incremental)? o estoque
  * aguenta (viabilidade)?
  */
-function scoreOf(combination: DiscoveredCombination, maxIncremental: number): number {
+function scoreOf(
+	combination: DiscoveredCombination,
+	maxIncremental: number,
+): ScoreBreakdown {
 	// Satura em lift 4: acima disso a diferença é quase sempre base pequena,
 	// não um padrão quatro vezes melhor.
-	const liftScore = Math.min(combination.economics.lift / 4, 1);
+	const liftScore = Math.min(combination.economics.lift / LIFT_CEILING, 1);
 
 	const marginScore =
 		maxIncremental > 0
-			? Math.max(0, combination.economics.incrementalMargin ?? 0) / maxIncremental
+			? Math.max(0, combination.economics.incrementalMargin ?? 0) /
+				maxIncremental
 			: 0;
 
 	const viability = VIABILITY_WEIGHT[combination.inventory.level];
 
-	return Math.round((liftScore * 0.4 + marginScore * 0.4 + viability * 0.2) * 100);
+	return {
+		lift: round(liftScore * SCORE_WEIGHTS.lift),
+		margin: round(marginScore * SCORE_WEIGHTS.margin),
+		inventory: round(viability * SCORE_WEIGHTS.inventory),
+	};
 }
 
 function refOf(
@@ -312,7 +350,10 @@ function refOf(
 	return refOfId(index.id(item), stats);
 }
 
-function refOfId(id: string, stats: ReadonlyMap<string, ProductStat>): ProductRef {
+function refOfId(
+	id: string,
+	stats: ReadonlyMap<string, ProductStat>,
+): ProductRef {
 	const stat = stats.get(id);
 	return {
 		id,

@@ -2,13 +2,16 @@ import { describe, expect, test } from "bun:test";
 import { apriori } from "./apriori.ts";
 import { fpGrowth } from "./fpgrowth.ts";
 import { generateRules } from "./rules.ts";
-import { type MinedItemset, itemsetKey } from "./types.ts";
+import { itemsetKey, type MinedItemset } from "./types.ts";
 
 /** Itemsets viram um mapa chave -> suporte, para comparar sem depender da ordem. */
 function asMap(itemsets: readonly MinedItemset[]): Map<string, number> {
 	const map = new Map<string, number>();
 	for (const itemset of itemsets) {
-		map.set(itemsetKey([...itemset.items].sort((a, b) => a - b)), itemset.supportCount);
+		map.set(
+			itemsetKey([...itemset.items].sort((a, b) => a - b)),
+			itemset.supportCount,
+		);
 	}
 	return map;
 }

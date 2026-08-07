@@ -72,6 +72,16 @@
 	--sidebar-ring: hsl(217.2 91.2% 59.8%);
 }
 
+/**
+ * Elevação padrão de card do deco Studio: uma borda sutil resolvida como
+ * sombra, para o card não ganhar peso de outline em cima de fundo escuro.
+ */
+@utility card-shadow {
+	box-shadow:
+		0 0 0 1px var(--color-border),
+		0 1px 2px 0 rgb(0 0 0 / 0.04);
+}
+
 @layer base {
 	button,
 	a,

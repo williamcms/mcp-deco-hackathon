@@ -159,7 +159,11 @@ function mine(
 
 		for (let node = entry.head; node; node = node.next) {
 			const path: number[] = [];
-			for (let ancestor = node.parent; ancestor?.parent; ancestor = ancestor.parent) {
+			for (
+				let ancestor = node.parent;
+				ancestor?.parent;
+				ancestor = ancestor.parent
+			) {
 				path.push(ancestor.item);
 			}
 			if (path.length === 0) continue;

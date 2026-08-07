@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import type { ShopifyLineItem, ShopifyOrder } from "../shopify/orders.ts";
-import { discoverCombinations } from "./discover.ts";
+import {
+	discoverCombinations,
+	LIFT_CEILING,
+	SCORE_WEIGHTS,
+} from "./discover.ts";
 import { computeEconomics, computeViability } from "./metrics.ts";
 import { analyzeSequences } from "./sequence.ts";
 import { buildTransactions } from "./transactions.ts";
@@ -132,7 +136,8 @@ describe("buildTransactions", () => {
 		];
 
 		expect(
-			buildTransactions(orders, { includeCancelled: false }).transactions.length,
+			buildTransactions(orders, { includeCancelled: false }).transactions
+				.length,
 		).toBe(1);
 		expect(
 			buildTransactions(orders, { includeCancelled: true }).transactions.length,
@@ -266,7 +271,13 @@ describe("computeViability", () => {
 			includeCancelled: false,
 		});
 
-		return computeViability("ab".split(""), transactions, stats, 10, economicsOptions);
+		return computeViability(
+			"ab".split(""),
+			transactions,
+			stats,
+			10,
+			economicsOptions,
+		);
 	}
 
 	test("estoque folgado é viabilidade alta e aponta o gargalo", () => {
@@ -303,10 +314,30 @@ describe("computeViability", () => {
 describe("analyzeSequences", () => {
 	test("detecta recompra e o tempo típico entre as duas", () => {
 		const orders = [
-			order({ id: "1", customerId: "c1", createdAt: "2026-01-01T10:00:00Z", lines: [{ productId: "cafeteira" }] }),
-			order({ id: "2", customerId: "c1", createdAt: "2026-01-21T10:00:00Z", lines: [{ productId: "filtro" }] }),
-			order({ id: "3", customerId: "c2", createdAt: "2026-01-02T10:00:00Z", lines: [{ productId: "cafeteira" }] }),
-			order({ id: "4", customerId: "c2", createdAt: "2026-01-24T10:00:00Z", lines: [{ productId: "filtro" }] }),
+			order({
+				id: "1",
+				customerId: "c1",
+				createdAt: "2026-01-01T10:00:00Z",
+				lines: [{ productId: "cafeteira" }],
+			}),
+			order({
+				id: "2",
+				customerId: "c1",
+				createdAt: "2026-01-21T10:00:00Z",
+				lines: [{ productId: "filtro" }],
+			}),
+			order({
+				id: "3",
+				customerId: "c2",
+				createdAt: "2026-01-02T10:00:00Z",
+				lines: [{ productId: "cafeteira" }],
+			}),
+			order({
+				id: "4",
+				customerId: "c2",
+				createdAt: "2026-01-24T10:00:00Z",
+				lines: [{ productId: "filtro" }],
+			}),
 		];
 
 		const { transactions, index } = buildTransactions(orders, {
@@ -334,13 +365,35 @@ describe("analyzeSequences", () => {
 
 	test("cliente recorrente não infla a confiança sozinho", () => {
 		const orders = [
-			order({ id: "1", customerId: "c1", createdAt: "2026-01-01T10:00:00Z", lines: [{ productId: "a" }] }),
-			order({ id: "2", customerId: "c1", createdAt: "2026-01-05T10:00:00Z", lines: [{ productId: "b" }] }),
-			order({ id: "3", customerId: "c1", createdAt: "2026-01-09T10:00:00Z", lines: [{ productId: "b" }] }),
-			order({ id: "4", customerId: "c1", createdAt: "2026-01-13T10:00:00Z", lines: [{ productId: "b" }] }),
+			order({
+				id: "1",
+				customerId: "c1",
+				createdAt: "2026-01-01T10:00:00Z",
+				lines: [{ productId: "a" }],
+			}),
+			order({
+				id: "2",
+				customerId: "c1",
+				createdAt: "2026-01-05T10:00:00Z",
+				lines: [{ productId: "b" }],
+			}),
+			order({
+				id: "3",
+				customerId: "c1",
+				createdAt: "2026-01-09T10:00:00Z",
+				lines: [{ productId: "b" }],
+			}),
+			order({
+				id: "4",
+				customerId: "c1",
+				createdAt: "2026-01-13T10:00:00Z",
+				lines: [{ productId: "b" }],
+			}),
 		];
 
-		const { transactions } = buildTransactions(orders, { includeCancelled: false });
+		const { transactions } = buildTransactions(orders, {
+			includeCancelled: false,
+		});
 
 		const { rules } = analyzeSequences(transactions, {
 			windowDays: 60,
@@ -356,11 +409,23 @@ describe("analyzeSequences", () => {
 
 	test("compra fora da janela não conta", () => {
 		const orders = [
-			order({ id: "1", customerId: "c1", createdAt: "2026-01-01T10:00:00Z", lines: [{ productId: "a" }] }),
-			order({ id: "2", customerId: "c1", createdAt: "2026-06-01T10:00:00Z", lines: [{ productId: "b" }] }),
+			order({
+				id: "1",
+				customerId: "c1",
+				createdAt: "2026-01-01T10:00:00Z",
+				lines: [{ productId: "a" }],
+			}),
+			order({
+				id: "2",
+				customerId: "c1",
+				createdAt: "2026-06-01T10:00:00Z",
+				lines: [{ productId: "b" }],
+			}),
 		];
 
-		const { transactions } = buildTransactions(orders, { includeCancelled: false });
+		const { transactions } = buildTransactions(orders, {
+			includeCancelled: false,
+		});
 
 		const { rules } = analyzeSequences(transactions, {
 			windowDays: 30,
@@ -373,11 +438,23 @@ describe("analyzeSequences", () => {
 
 	test("pedido sem cliente identificado não entra", () => {
 		const orders = [
-			order({ id: "1", customerId: null, createdAt: "2026-01-01T10:00:00Z", lines: [{ productId: "a" }] }),
-			order({ id: "2", customerId: null, createdAt: "2026-01-05T10:00:00Z", lines: [{ productId: "b" }] }),
+			order({
+				id: "1",
+				customerId: null,
+				createdAt: "2026-01-01T10:00:00Z",
+				lines: [{ productId: "a" }],
+			}),
+			order({
+				id: "2",
+				customerId: null,
+				createdAt: "2026-01-05T10:00:00Z",
+				lines: [{ productId: "b" }],
+			}),
 		];
 
-		const { transactions } = buildTransactions(orders, { includeCancelled: false });
+		const { transactions } = buildTransactions(orders, {
+			includeCancelled: false,
+		});
 		const { rules, customersAnalyzed } = analyzeSequences(transactions, {
 			windowDays: 60,
 			minCustomers: 1,
@@ -434,7 +511,9 @@ describe("discoverCombinations", () => {
 					id: `solo-${i}`,
 					customerId: `c${i}`,
 					createdAt: "2026-01-12T10:00:00Z",
-					lines: [{ productId: i % 2 === 0 ? "c" : "d", paid: 80, unitCost: 30 }],
+					lines: [
+						{ productId: i % 2 === 0 ? "c" : "d", paid: 80, unitCost: 30 },
+					],
 				}),
 			);
 		}
@@ -458,6 +537,37 @@ describe("discoverCombinations", () => {
 		expect(combination.economics.lift).toBe(2.5);
 		expect(combination.economics.bundleMargin).toBe(100);
 		expect(combination.score).toBeGreaterThan(0);
+	});
+
+	test("a decomposição do score fecha com o score e respeita os pesos", () => {
+		const result = discoverCombinations(sampleOrders(), baseOptions);
+
+		for (const combination of result.combinations) {
+			const { lift, margin, inventory } = combination.scoreBreakdown;
+
+			// A interface mostra a conta ao usuário; se as partes não somassem o
+			// total, o tooltip estaria mentindo.
+			expect(Math.round(lift + margin + inventory)).toBe(combination.score);
+
+			expect(lift).toBeLessThanOrEqual(SCORE_WEIGHTS.lift);
+			expect(margin).toBeLessThanOrEqual(SCORE_WEIGHTS.margin);
+			expect(inventory).toBeLessThanOrEqual(SCORE_WEIGHTS.inventory);
+			expect(lift).toBeGreaterThanOrEqual(0);
+			expect(margin).toBeGreaterThanOrEqual(0);
+			expect(inventory).toBeGreaterThanOrEqual(0);
+		}
+	});
+
+	test("lift acima do teto satura a nota daquele eixo", () => {
+		const result = discoverCombinations(sampleOrders(), baseOptions);
+		const combination = result.combinations.find((c) => c.size === 2);
+		if (!combination) throw new Error("combinação esperada não encontrada");
+
+		// lift 2.5 de um teto 4 → 62,5% dos 40 pontos.
+		expect(combination.scoreBreakdown.lift).toBeCloseTo(
+			(2.5 / LIFT_CEILING) * SCORE_WEIGHTS.lift,
+			1,
+		);
 	});
 
 	test("os dois motores dão o mesmo resultado", () => {
@@ -497,7 +607,10 @@ describe("discoverCombinations", () => {
 	});
 
 	test("avisa quando a base é pequena demais para concluir algo", () => {
-		const result = discoverCombinations(sampleOrders().slice(0, 3), baseOptions);
+		const result = discoverCombinations(
+			sampleOrders().slice(0, 3),
+			baseOptions,
+		);
 		expect(result.warnings.some((w) => w.includes("base pequena"))).toBe(true);
 	});
 

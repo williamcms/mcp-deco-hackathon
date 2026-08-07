@@ -72,9 +72,7 @@ export function analyzeSequences(
 		if (orders.length < 2) continue;
 		customersAnalyzed++;
 
-		orders.sort(
-			(a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt),
-		);
+		orders.sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
 
 		for (let i = 0; i < orders.length - 1; i++) {
 			const first = orders[i] as Transaction;
@@ -147,13 +145,18 @@ export function analyzeSequences(
 	}
 
 	rules.sort(
-		(a, b) => b.confidence - a.confidence || b.customersWithBoth - a.customersWithBoth,
+		(a, b) =>
+			b.confidence - a.confidence || b.customersWithBoth - a.customersWithBoth,
 	);
 
 	return { rules, customersAnalyzed };
 }
 
-function addTo(map: Map<number, Set<string>>, key: number, value: string): void {
+function addTo(
+	map: Map<number, Set<string>>,
+	key: number,
+	value: string,
+): void {
 	const set = map.get(key);
 	if (set) {
 		set.add(value);
