@@ -8,12 +8,15 @@ import {
 } from "@tanstack/react-router";
 import { useMcpHostContext, useMcpState } from "./context.tsx";
 import CollectShopifySalesPage from "./tools/collect-shopify-sales/index.tsx";
+import DiscoverCombinationsPage from "./tools/discover-combinations/index.tsx";
 import HelloPage from "./tools/hello/index.tsx";
 import ShopifyOrdersPage from "./tools/shopify-orders/index.tsx";
 
 const TOOL_PAGES: Record<string, React.ComponentType> = {
 	hello_world: HelloPage,
 	shopify_orders: ShopifyOrdersPage,
+	collect_shopify_sales: CollectShopifySalesPage,
+	discover_combinations: DiscoverCombinationsPage,
 };
 
 function ToolRouter() {
