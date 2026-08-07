@@ -34,6 +34,10 @@ tudo isso via Tailwind v4 + tokens CSS, e as classes abaixo são as mesmas que o
   pesados demais em fundo escuro.
 - Texto de botão e de linha de card segue os tamanhos abaixo em
   [Tipografia](#tipografia); não inventar `text-xs` onde o admin usa `text-sm`.
+- **Tailwind: token embutido antes de valor arbitrário.** A escala numérica do Tailwind
+  cobre mais do que parece — `300px` é `max-w-75` (75 × 0.25rem), não `max-w-[300px]`.
+  Confira a escala antes de escrever um arbitrário. `[...]` só quando o valor não existe
+  em nenhuma escala, ex: uma cor computada com `color-mix(...)`.
 
 ## Tokens de cor
 
@@ -57,7 +61,9 @@ isso nunca precisa de um `/50` ou `/60` em cima: a opacidade certa já está no 
 
 ## Utilitários customizados
 
-Definidos em `web/globals.css`, usar em vez de `shadow-*` do Tailwind:
+Definidos em `web/globals.css`, usar em vez de `shadow-*` do Tailwind. Só entram aqui
+utilitários genuinamente reusados por várias telas — algo usado numa única tela/componente
+fica de `color-mix(...)` arbitrário ali mesmo, não vira `@utility` global:
 
 ```css
 /** Elevação padrão de card — borda sutil resolvida como sombra. */
@@ -212,6 +218,19 @@ function SmallButton({ children, onClick, active = false, disabled = false, vari
 `web/components/ui/button.tsx`) usa `text-sm`, mesmo nos tamanhos pequenos (`h-7`/`h-8`).
 Foco também é `border-ring` + anel de `2px` a `20%` de opacidade, não `ring-2`/`ring-ring/30`.
 
+## Z-index
+
+Overlays customizados sem portal (tooltip, menu de ação, e o que vier depois — ex: um
+modal) usam uma escala pequena e fixa, documentada aqui, não em cada componente:
+
+| Camada | Classe | Uso |
+|---|---|---|
+| Painel flutuante | `z-1` | `HoverTip`, `ActionMenu` |
+| Seta de painel flutuante | `z-2` | seta do `ActionMenu` — sempre acima do próprio painel |
+
+Fica margem (`z-3` a `z-10`) pra próximas camadas (ex: modal). Nunca escale pra `z-50`,
+`z-100` ou `z-[9999]` — se precisar de mais uma camada, suba dentro dessa tabela.
+
 ## Tipografia
 
 | Elemento | Classes |
@@ -231,6 +250,8 @@ Foco também é `border-ring` + anel de `2px` a `20%` de opacidade, não `ring-2
 - [ ] Botões pequenos usam `text-sm` e o foco `border-ring focus-visible:ring-[2px] focus-visible:ring-ring/20`?
 - [ ] Layout de página segue `Page`/`Section` (`max-w-[1200px]`, `gap-10`, `gap-3`) em vez de valores improvisados?
 - [ ] Elevação usa `card-shadow` (superfície fixa) ou `floating-surface` (painel `position: fixed`), nunca `shadow-*` do Tailwind puro?
+- [ ] z-index vem da tabela em [Z-index](#z-index) (`z-1`, `z-2`, ...), nunca `z-50`/`z-100`/`z-[9999]`?
+- [ ] Nenhum valor arbitrário (`z-[10]`, `text-[13px]`) onde já existe um token embutido do Tailwind pro mesmo caso?
 
 ## Mismatches já encontrados e corrigidos
 
@@ -242,3 +263,6 @@ primitivas de uma tool antiga desatualizada:
 | `Row` (divisor) | `bg-border/60` | `bg-border` |
 | `Alert` | `card-shadow`, tom neutro `text-muted-foreground` | `border border-border`, tom neutro `text-card-foreground` |
 | `SmallButton` | `text-xs`, foco `ring-2 ring-ring/30` | `text-sm`, foco `border-ring ring-[2px] ring-ring/20` |
+| z-index de overlay | `z-100` (e, no meio do caminho, uma variável CSS `--z-floating-panel` só pra virar `z-[var(...)]`) | `z-1`/`z-2` direto — token embutido do Tailwind, escala documentada aqui, não em CSS var |
+| Seta de painel flutuante | `@utility floating-surface-arrow` global pra um uso único | `color-mix(...)` arbitrário direto na classe do componente — uso único não justifica utilitário global |
+| `max-w-[300px]` num tooltip de largura fixa | tratado como "sem token equivalente" | `max-w-75` já cobre 300px na escala numérica do Tailwind |

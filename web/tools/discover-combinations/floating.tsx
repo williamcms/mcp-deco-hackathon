@@ -1,30 +1,41 @@
 import { type ReactNode, useCallback, useEffect, useId, useRef, useState } from "react";
 
-/**
- * Tooltip e menu próprios, sem portal.
- *
- * O Radix monta o conteúdo em `document.body` via portal, e neste host isso
- * não aparece — nem tooltip nem dropdown renderizaram. Como esta é a primeira
- * tela do projeto a usar overlay do Radix, não havia nada provando que
- * funcionasse aqui.
- *
- * A saída é ficar na própria árvore React e escapar do clipping com
- * `position: fixed`, cujas coordenadas vêm do getBoundingClientRect do
- * gatilho. Funciona dentro do `overflow-x-auto` das tabelas porque nenhum
- * ancestral cria containing block (sem transform, filter ou will-change).
- */
+interface FloatingArrowProps {
+  left?: number;
+  right?: number;
+  top?: number;
+  bottom?: number;
+  /** True when the panel is below the trigger, so the arrow points up at it. */
+  pointsUp: boolean;
+}
+
+function FloatingArrow(props: FloatingArrowProps) {
+  const { left, right, top, bottom, pointsUp } = props;
+
+  return (
+    <span
+      aria-hidden="true"
+      className={`z-2 fixed rounded-xs size-2.5 rotate-45 pointer-events-none bg-[color-mix(in_oklab,var(--color-foreground)_7%,var(--color-background))] border-[color-mix(in_oklab,var(--color-foreground)_14%,transparent)] ${
+        pointsUp ? "border-t border-l" : "border-r border-b"
+      }`}
+      style={{ left, right, top, bottom }}
+    />
+  );
+}
 
 interface Anchor {
   x: number;
   y: number;
-  /** true quando não cabe acima e o painel foi virado para baixo. */
+  /** Unclamped horizontal center of the trigger — where the arrow points. */
+  arrowX: number;
+  /** True when there wasn't room above and the panel flipped to below. */
   below: boolean;
 }
 
-/** Teto de altura do painel — texto mais longo que isso rola em vez de clipar. */
+/** Panel height cap — longer content scrolls instead of clipping. */
 const PANEL_MAX_HEIGHT = 320;
 
-/** Mantém o painel dentro da viewport, com folga nas bordas. */
+/** Keeps the panel inside the viewport, with margin at the edges. */
 function anchorFrom(element: HTMLElement, halfWidth: number): Anchor {
   const rect = element.getBoundingClientRect();
   const margin = 8;
@@ -32,25 +43,25 @@ function anchorFrom(element: HTMLElement, halfWidth: number): Anchor {
 
   const min = halfWidth + margin;
   const max = window.innerWidth - halfWidth - margin;
-  // Viewport mais estreita que o painel: centraliza e deixa o CSS encolher.
+  // Viewport narrower than the panel: center it and let CSS shrink it.
   const x = min > max ? window.innerWidth / 2 : Math.min(Math.max(center, min), max);
 
-  // Vira para baixo se não sobrar altura suficiente acima do gatilho para o
-  // painel inteiro (PANEL_MAX_HEIGHT), em vez de um limiar fixo pequeno que
-  // ignorava textos mais longos.
+  // Flip below when there isn't enough room above for the full panel
+  // (PANEL_MAX_HEIGHT), instead of a small fixed threshold that ignored
+  // longer content.
   const below = rect.top < PANEL_MAX_HEIGHT + margin;
-  return { x, y: below ? rect.bottom + 8 : rect.top - 8, below };
+  return { x, y: below ? rect.bottom + 8 : rect.top - 8, arrowX: center, below };
 }
 
-export function HoverTip({
-  content,
-  children,
-  className = "",
-}: {
+export interface HoverTipProps {
   content: ReactNode;
   children: ReactNode;
   className?: string;
-}) {
+}
+
+export function HoverTip(props: HoverTipProps) {
+  const { content, children, className = "" } = props;
+
   const [anchor, setAnchor] = useState<Anchor | null>(null);
   const ref = useRef<HTMLButtonElement>(null);
   const id = useId();
@@ -60,8 +71,8 @@ export function HoverTip({
   }, []);
   const hide = useCallback(() => setAnchor(null), []);
 
-  // Rolar com o tooltip aberto deixaria o painel parado no lugar antigo,
-  // já que a posição foi congelada no momento do hover.
+  // Scrolling while the tooltip is open would leave the panel stuck in its
+  // old spot, since its position was frozen at hover time.
   useEffect(() => {
     if (!anchor) return;
     window.addEventListener("scroll", hide, true);
@@ -82,26 +93,29 @@ export function HoverTip({
         onMouseLeave={hide}
         onFocus={show}
         onBlur={hide}
-        // O tooltip é informativo: o clique não deve fazer nada, nem
-        // submeter formulário nem borbulhar para a linha da tabela.
+        // The tooltip is informational: clicking should do nothing — not
+        // submit a form, not bubble up to the table row.
         onClick={(event) => event.preventDefault()}
         className={`text-left font-normal outline-none focus-visible:ring-2 focus-visible:ring-ring/40 rounded-sm ${className}`}
       >
         {children}
       </button>
       {anchor ? (
-        <span
-          id={id}
-          role="tooltip"
-          className="z-100 fixed px-3 py-2 rounded-lg w-auto min-w-50 max-w-75 max-h-80 overflow-y-auto text-foreground text-xs text-left wrap-break-word text-balance leading-relaxed whitespace-normal pointer-events-none floating-surface"
-          style={{
-            left: anchor.x,
-            top: anchor.y,
-            transform: `translate(-50%, ${anchor.below ? "0" : "-100%"})`,
-          }}
-        >
-          {content}
-        </span>
+        <>
+          <span
+            id={id}
+            role="tooltip"
+            className="z-1 fixed px-3 py-2 rounded-lg w-auto min-w-50 max-w-75 max-h-80 overflow-y-auto text-foreground text-xs text-left wrap-break-word text-balance leading-relaxed whitespace-normal pointer-events-none floating-surface"
+            style={{
+              left: anchor.x,
+              top: anchor.y,
+              transform: `translate(-50%, ${anchor.below ? "0" : "-100%"})`,
+            }}
+          >
+            {content}
+          </span>
+          <FloatingArrow left={anchor.arrowX - 5} top={anchor.y - 5} pointsUp={anchor.below} />
+        </>
       ) : null}
     </>
   );
@@ -114,8 +128,28 @@ export interface ActionItem {
   onSelect: () => void;
 }
 
-export function ActionMenu({ items, label, trigger }: { items: ActionItem[]; label: string; trigger: ReactNode }) {
-  const [anchor, setAnchor] = useState<{ right: number; top: number } | null>(null);
+/** Menu height cap — more items than this scroll instead of overflowing the screen. */
+const MENU_MAX_HEIGHT = 260;
+
+interface MenuAnchor {
+  right: number;
+  top?: number;
+  bottom?: number;
+  /** Distance from the trigger's center to the screen's right edge — where the arrow points. */
+  arrowRight: number;
+  below: boolean;
+}
+
+export interface ActionMenuProps {
+  items: ActionItem[];
+  label: string;
+  trigger: ReactNode;
+}
+
+export function ActionMenu(props: ActionMenuProps) {
+  const { items, label, trigger } = props;
+
+  const [anchor, setAnchor] = useState<MenuAnchor | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -128,10 +162,20 @@ export function ActionMenu({ items, label, trigger }: { items: ActionItem[]; lab
     }
     const rect = triggerRef.current?.getBoundingClientRect();
     if (rect) {
-      setAnchor({
-        right: window.innerWidth - rect.right,
-        top: rect.bottom + 6,
-      });
+      const margin = 10;
+      // Aligns the menu's right edge a bit past the trigger, not flush with
+      // it — flush, the menu looked like it was floating away from the click.
+      const right = Math.max(window.innerWidth - rect.right - 13, 8);
+      const arrowRight = window.innerWidth - (rect.left + rect.width / 2);
+      // Flip above when there isn't enough room below for the full menu —
+      // same idea as HoverTip, otherwise the menu on the table's last rows
+      // opens partially off-screen.
+      const fitsBelow = window.innerHeight - rect.bottom >= MENU_MAX_HEIGHT + margin;
+      setAnchor(
+        fitsBelow
+          ? { right, top: rect.bottom + margin, arrowRight, below: true }
+          : { right, bottom: window.innerHeight - rect.top + margin, arrowRight, below: false },
+      );
     }
   }
 
@@ -140,8 +184,8 @@ export function ActionMenu({ items, label, trigger }: { items: ActionItem[]; lab
 
     function onPointerDown(event: PointerEvent) {
       const target = event.target as Node;
-      // Clique no próprio gatilho já é tratado pelo toggle; fechar aqui
-      // também faria o menu abrir e fechar no mesmo clique.
+      // A click on the trigger itself is already handled by toggle; closing
+      // here too would open and close the menu on the same click.
       if (triggerRef.current?.contains(target)) return;
       if (panelRef.current?.contains(target)) return;
       close();
@@ -178,33 +222,43 @@ export function ActionMenu({ items, label, trigger }: { items: ActionItem[]; lab
         {trigger}
       </button>
       {anchor ? (
-        <div
-          ref={panelRef}
-          role="menu"
-          className="z-100 fixed p-1 rounded-lg w-60 overflow-hidden text-foreground floating-surface"
-          style={{ right: anchor.right, top: anchor.top }}
-        >
-          {items.map((item) => (
-            <button
-              key={item.label}
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                close();
-                item.onSelect();
-              }}
-              className="flex items-start gap-2.5 hover:bg-accent focus-visible:bg-accent px-2.5 py-2 rounded-md outline-none w-full text-sm text-left transition-colors hover:text-accent-foreground"
-            >
-              {item.icon ? <span className="mt-0.5 text-muted-foreground shrink-0">{item.icon}</span> : null}
-              <span className="flex flex-col gap-0.5 min-w-0">
-                <span className="font-medium">{item.label}</span>
-                {item.description ? (
-                  <span className="text-muted-foreground text-xs leading-relaxed">{item.description}</span>
-                ) : null}
-              </span>
-            </button>
-          ))}
-        </div>
+        <>
+          <div
+            ref={panelRef}
+            role="menu"
+            className="z-1 fixed p-1 rounded-lg w-72 max-h-65 overflow-x-hidden overflow-y-auto text-foreground floating-surface"
+            style={{ right: anchor.right, top: anchor.top, bottom: anchor.bottom }}
+          >
+            {items.map((item) => (
+              <button
+                key={item.label}
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  close();
+                  item.onSelect();
+                }}
+                className="flex items-start gap-2.5 hover:bg-accent focus-visible:bg-accent px-2.5 py-2 rounded-md outline-none w-full text-sm text-left transition-colors hover:text-accent-foreground"
+              >
+                {item.icon ? <span className="mt-0.5 text-muted-foreground shrink-0">{item.icon}</span> : null}
+                <span className="flex flex-col flex-1 gap-0.5 min-w-0">
+                  <span className="font-medium wrap-break-word whitespace-normal">{item.label}</span>
+                  {item.description ? (
+                    <span className="text-muted-foreground text-xs wrap-break-word leading-relaxed whitespace-normal">
+                      {item.description}
+                    </span>
+                  ) : null}
+                </span>
+              </button>
+            ))}
+          </div>
+          <FloatingArrow
+            right={anchor.arrowRight - 20}
+            top={anchor.below ? (anchor.top ?? 0) - 5 : undefined}
+            bottom={anchor.below ? undefined : (anchor.bottom ?? 0) - 5}
+            pointsUp={anchor.below}
+          />
+        </>
       ) : null}
     </>
   );

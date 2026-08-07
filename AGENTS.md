@@ -56,6 +56,13 @@ The UI renders based on `McpStatus`: `initializing` → `connected` → `tool-in
 
 - `@/*` → `web/*` (components, hooks, lib)
 
+### UI Theme
+
+Before building or adjusting any tool screen in `web/tools/<name>/`, read
+[`docs/default-theme.md`](docs/default-theme.md) — colors, spacing, z-index scale, and
+reference implementations of the shared primitives (`Page`, `Section`, `Card`, `Row`,
+`Alert`, `SmallButton`) that make a tool screen look native to the deco Studio admin.
+
 ## Code Style
 
 - **Runtime**: Bun (not Node) for local development
@@ -64,3 +71,17 @@ The UI renders based on `McpStatus`: `initializing` → `connected` → `tool-in
 - **UI components**: shadcn/ui in `web/components/ui/` (do not lint these for a11y)
 - **Styling**: Tailwind CSS v4, use `cn()` from `@/lib/utils.ts` for conditional classes
 - **Validation**: Zod v4 for all schemas (tool input/output, state)
+- **Component props**: an exported, named `interface` (e.g. `FooProps`), not an inline
+  object type in the function signature; extend other prop types in the interface
+  declaration (`interface FooProps extends BarProps`), not by intersecting at the
+  parameter position.
+- **Destructuring**: destructure props in the function body (`const { title } = props`),
+  not in the parameter list — the one required exception is a tool page's default export
+  (`web/tools/<name>/index.tsx`), which takes no props at all.
+- **Exports**: named exports preferred over default exports. The one required exception
+  is `web/tools/<name>/index.tsx` — the router in `web/router.tsx` imports the page as a
+  default export, so that file keeps `export default function <Name>Page()`.
+- **Comments and docs**: English only. Prefer JSDoc (`/** ... */`) on functions and
+  exported types over inline `//` comments. Only add a comment when it explains something
+  the code doesn't already show on its own (a non-obvious *why*, a constraint, a tradeoff)
+  — never one that just restates what the next line does.
