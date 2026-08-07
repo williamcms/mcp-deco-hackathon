@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.t
 import { ChartContainer } from "@/components/ui/chart.tsx";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table.tsx";
 import { useMcpApp, useMcpHostContext, useMcpState } from "@/context.tsx";
-import { useMemo } from "react";
+import { createSalesFormatters, formatOptionalPercentage, formatShortDate } from "@/utils/formatters.ts";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, LabelList, Tooltip, XAxis, YAxis } from "recharts";
 import type {
   CollectedItem,
@@ -14,48 +14,6 @@ import type {
 } from "../../../api/tools/collect-shopify-sales.ts";
 
 const PERIODS = [30, 60, 90] as const;
-
-// ---------------------------------------------------------------------------
-// Formatação
-// ---------------------------------------------------------------------------
-
-function makeCurrencyFormatter(currency: string, compact: boolean) {
-  const options: Intl.NumberFormatOptions = compact
-    ? {
-        style: "currency",
-        currency,
-        notation: "compact",
-        maximumFractionDigits: 1,
-      }
-    : { style: "currency", currency, maximumFractionDigits: 2 };
-  try {
-    return new Intl.NumberFormat("pt-BR", options);
-  } catch {
-    // Moeda desconhecida pelo Intl — cai para número puro em vez de quebrar.
-    return new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 2 });
-  }
-}
-
-function useFormatters(currency: string) {
-  return useMemo(
-    () => ({
-      money: makeCurrencyFormatter(currency, false),
-      moneyCompact: makeCurrencyFormatter(currency, true),
-      int: new Intl.NumberFormat("pt-BR"),
-    }),
-    [currency],
-  );
-}
-
-/** "2026-08-06" → "06/08". Split manual para não escorregar de fuso. */
-function shortDate(isoDate: string): string {
-  const [, month, day] = isoDate.split("-");
-  return `${day}/${month}`;
-}
-
-function formatPct(value: number | null): string {
-  return value == null ? "—" : `${value.toLocaleString("pt-BR")}%`;
-}
 
 // ---------------------------------------------------------------------------
 // Blocos reutilizados
@@ -74,7 +32,8 @@ function Spinner({ label }: { label: string }) {
   );
 }
 
-function Kpi({ label, value, hint }: { label: string; value: string; hint?: string }) {
+/** Cartão de métrica (label + valor + dica opcional) usado no topo do dashboard. */
+function MetricCard({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
     <Card className="gap-2">
       <CardHeader className="pb-0">
@@ -248,10 +207,10 @@ function Dashboard({
   onPeriodChange: (days: number) => void;
   onToggleDisplayMode: () => void;
 }) {
-  const { money, moneyCompact, int } = useFormatters(data.currency);
+  const { money, moneyCompact, int } = createSalesFormatters(data.currency);
   const { summary, period } = data;
 
-  const rangeLabel = `${shortDate(period.from.slice(0, 10))} – ${shortDate(period.to.slice(0, 10))}`;
+  const rangeLabel = `${formatShortDate(period.from.slice(0, 10))} – ${formatShortDate(period.to.slice(0, 10))}`;
 
   return (
     <div className="space-y-6 bg-background p-4 sm:p-6 min-h-dvh">
@@ -299,29 +258,29 @@ function Dashboard({
 
       {/* KPIs */}
       <div className="gap-3 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
-        <Kpi
+        <MetricCard
           label="Receita líquida"
           value={money.format(summary.revenue)}
           hint={`bruto ${moneyCompact.format(summary.grossRevenue)}`}
         />
-        <Kpi label="Pedidos" value={int.format(summary.orders)} />
-        <Kpi
+        <MetricCard label="Pedidos" value={int.format(summary.orders)} />
+        <MetricCard
           label="Ticket médio"
           value={money.format(summary.avgTicket)}
           hint={`${int.format(summary.units)} un. vendidas`}
         />
-        <Kpi
+        <MetricCard
           label="Desconto"
           value={money.format(summary.discount)}
-          hint={`${formatPct(summary.discountPct)} do bruto`}
+          hint={`${formatOptionalPercentage(summary.discountPct)} do bruto`}
         />
-        <Kpi
+        <MetricCard
           label="Margem"
-          value={formatPct(summary.marginPct)}
+          value={formatOptionalPercentage(summary.marginPct)}
           hint={
             summary.costCoverage >= 100
               ? money.format(summary.margin)
-              : `cobre ${formatPct(summary.costCoverage)} da receita`
+              : `cobre ${formatOptionalPercentage(summary.costCoverage)} da receita`
           }
         />
       </div>
@@ -341,7 +300,7 @@ function Dashboard({
                 </linearGradient>
               </defs>
               <CartesianGrid vertical={false} strokeDasharray="3 3" />
-              <XAxis dataKey="date" tickFormatter={shortDate} tickLine={false} axisLine={false} minTickGap={24} />
+              <XAxis dataKey="date" tickFormatter={formatShortDate} tickLine={false} axisLine={false} minTickGap={24} />
               <YAxis
                 tickFormatter={(value: number) => moneyCompact.format(value)}
                 tickLine={false}
@@ -356,7 +315,7 @@ function Dashboard({
                   return (
                     <ChartTip
                       active={active}
-                      title={shortDate(point.date)}
+                      title={formatShortDate(point.date)}
                       rows={[
                         {
                           label: "Receita",
@@ -419,7 +378,10 @@ function Dashboard({
                       rows={[
                         { label: "Receita", value: money.format(bar.revenue) },
                         { label: "Unidades", value: int.format(bar.units) },
-                        { label: "Margem", value: formatPct(bar.marginPct) },
+                        {
+                          label: "Margem",
+                          value: formatOptionalPercentage(bar.marginPct),
+                        },
                       ]}
                     />
                   );
@@ -431,7 +393,7 @@ function Dashboard({
                   position="right"
                   className="fill-muted-foreground"
                   fontSize={11}
-                  formatter={(value: number | null) => formatPct(value)}
+                  formatter={(value: number | null) => formatOptionalPercentage(value)}
                 />
               </Bar>
             </BarChart>
@@ -450,7 +412,7 @@ function Dashboard({
 // ---------------------------------------------------------------------------
 
 function ItemsTable({ data }: { data: CollectShopifySalesOutput }) {
-  const { money, int } = useFormatters(data.currency);
+  const { money, int } = createSalesFormatters(data.currency);
 
   return (
     <Card>
@@ -530,7 +492,7 @@ function ItemRow({ item, money, int }: { item: CollectedItem; money: Intl.Number
       <TableCell className="tabular-nums text-muted-foreground text-right whitespace-nowrap">
         {item.discount > 0 ? `−${money.format(item.discount)}` : "—"}
       </TableCell>
-      <TableCell className="tabular-nums text-right">{formatPct(item.marginPct)}</TableCell>
+      <TableCell className="tabular-nums text-right">{formatOptionalPercentage(item.marginPct)}</TableCell>
       <TableCell className="tabular-nums text-right">
         {item.stock == null ? (
           <span className="text-muted-foreground">—</span>

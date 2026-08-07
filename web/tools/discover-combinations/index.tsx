@@ -3,6 +3,20 @@ import { Badge } from "@/components/ui/badge.tsx";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table.tsx";
 import { useMcpApp, useMcpHostContext, useMcpState } from "@/context.tsx";
 import {
+  COMBINATION_SCORE_COLORS,
+  COMBINATION_SCORE_WEIGHTS,
+  INVENTORY_VIABILITY_LABELS,
+  INVENTORY_VIABILITY_STYLES,
+  LIFT_NORMALIZATION_CEILING,
+} from "@/utils/constants.ts";
+import {
+  type CombinationFormatters,
+  createCombinationFormatters,
+  formatLiftMultiplier,
+  formatPercentage,
+} from "@/utils/formatters.ts";
+import { extractToolErrorText } from "@/utils/mcp-tool-result.ts";
+import {
   AlertTriangle,
   ArrowRight,
   Coins,
@@ -14,7 +28,7 @@ import {
   TrendingUp,
   Users,
 } from "lucide-react";
-import { type ReactNode, useMemo, useState } from "react";
+import { type ReactNode, useState } from "react";
 import type {
   DiscoverCombinationsInput,
   DiscoverCombinationsOutput,
@@ -26,62 +40,9 @@ import { METRICS, type MetricKey } from "./metrics-copy.ts";
 type Combination = DiscoverCombinationsOutput["combinations"][number];
 type Rule = DiscoverCombinationsOutput["rules"][number];
 type Sequence = DiscoverCombinationsOutput["sequences"][number];
-type ViabilityLevel = Combination["inventory"]["level"];
-type Formatters = ReturnType<typeof useFormatters>;
 
 const PERIODS = [7, 30, 60] as const;
 const TOOL_NAME = "discover_combinations";
-
-/** Espelha SCORE_WEIGHTS e LIFT_CEILING do motor, só para rotular a conta. */
-const SCORE_WEIGHTS = { lift: 40, margin: 40, inventory: 20 } as const;
-const LIFT_CEILING = 4;
-
-const SCORE_COLORS = {
-  lift: "var(--color-chart-1)",
-  margin: "var(--color-chart-2)",
-  inventory: "var(--color-chart-3)",
-} as const;
-
-// ---------------------------------------------------------------------------
-// Formatação
-// ---------------------------------------------------------------------------
-
-function useFormatters() {
-  return useMemo(
-    () => ({
-      money: new Intl.NumberFormat("pt-BR", {
-        style: "currency",
-        currency: "BRL",
-        maximumFractionDigits: 0,
-      }),
-      int: new Intl.NumberFormat("pt-BR"),
-      decimal: new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 }),
-    }),
-    [],
-  );
-}
-
-function pct(value: number): string {
-  return `${value.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`;
-}
-
-function liftLabel(lift: number): string {
-  return `${lift.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}x`;
-}
-
-const VIABILITY_LABEL: Record<ViabilityLevel, string> = {
-  high: "Alta",
-  medium: "Média",
-  low: "Baixa",
-  unknown: "Indefinida",
-};
-
-const VIABILITY_CLASS: Record<ViabilityLevel, string> = {
-  high: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
-  medium: "bg-amber-500/15 text-amber-600 dark:text-amber-400",
-  low: "bg-red-500/15 text-red-600 dark:text-red-400",
-  unknown: "bg-muted text-muted-foreground",
-};
 
 // ---------------------------------------------------------------------------
 // Primitivas do styleguide
@@ -242,7 +203,7 @@ function HeadWithTip({ metric, align = "left" }: { metric: MetricKey; align?: "l
 // Células de dado
 // ---------------------------------------------------------------------------
 
-function Kpi({ icon, label, value, hint }: { icon: ReactNode; label: string; value: string; hint: string }) {
+function MetricCard({ icon, label, value, hint }: { icon: ReactNode; label: string; value: string; hint: string }) {
   return (
     <div className="flex flex-col gap-2 bg-card card-shadow px-4 py-4 rounded-xl text-card-foreground">
       <div className="flex items-center gap-2 text-muted-foreground">
@@ -289,7 +250,7 @@ function LiftCell({ lift }: { lift: number }) {
   const reading =
     lift < 1.1
       ? "Praticamente o que o acaso já explicaria — não é padrão."
-      : `Aparece ${liftLabel(lift)} mais do que apareceria por acaso.`;
+      : `Aparece ${formatLiftMultiplier(lift)} mais do que apareceria por acaso.`;
 
   return (
     <HoverTip
@@ -302,13 +263,19 @@ function LiftCell({ lift }: { lift: number }) {
       }
     >
       <Badge variant="outline" className={`px-2 py-0.5 ${tone}`}>
-        {liftLabel(lift)}
+        {formatLiftMultiplier(lift)}
       </Badge>
     </HoverTip>
   );
 }
 
-function ViabilityCell({ inventory, formatters }: { inventory: Combination["inventory"]; formatters: Formatters }) {
+function ViabilityCell({
+  inventory,
+  formatters,
+}: {
+  inventory: Combination["inventory"];
+  formatters: CombinationFormatters;
+}) {
   const detail =
     inventory.level === "unknown" ? (
       <span>Algum produto da combinação está sem estoque informado. Isso é falta de dado, não estoque zerado.</span>
@@ -335,8 +302,8 @@ function ViabilityCell({ inventory, formatters }: { inventory: Combination["inve
   return (
     <HoverTip className="inline-flex cursor-help" content={detail}>
       <span className="inline-flex flex-col items-start gap-0.5">
-        <Badge variant="secondary" className={`px-2 py-0.5 ${VIABILITY_CLASS[inventory.level]}`}>
-          {VIABILITY_LABEL[inventory.level]}
+        <Badge variant="secondary" className={`px-2 py-0.5 ${INVENTORY_VIABILITY_STYLES[inventory.level]}`}>
+          {INVENTORY_VIABILITY_LABELS[inventory.level]}
         </Badge>
         {inventory.maxBundles != null ? (
           <span className="tabular-nums text-[11px] text-muted-foreground">
@@ -349,7 +316,7 @@ function ViabilityCell({ inventory, formatters }: { inventory: Combination["inve
 }
 
 /** Score com a conta aberta: barra empilhada + decomposição no tooltip. */
-function ScoreCell({ combination, formatters }: { combination: Combination; formatters: Formatters }) {
+function ScoreCell({ combination, formatters }: { combination: Combination; formatters: CombinationFormatters }) {
   const { scoreBreakdown: parts, score } = combination;
 
   const segments = [
@@ -370,12 +337,14 @@ function ScoreCell({ combination, formatters }: { combination: Combination; form
                 <span className="flex items-center gap-1.5 text-muted-foreground">
                   <span
                     className="rounded-[2px] size-2 shrink-0"
-                    style={{ backgroundColor: SCORE_COLORS[segment.key] }}
+                    style={{
+                      backgroundColor: COMBINATION_SCORE_COLORS[segment.key],
+                    }}
                   />
                   {segment.label}
                 </span>
                 <span className="font-mono tabular-nums">
-                  {formatters.decimal.format(segment.value)} / {SCORE_WEIGHTS[segment.key]}
+                  {formatters.decimal.format(segment.value)} / {COMBINATION_SCORE_WEIGHTS[segment.key]}
                 </span>
               </span>
             ))}
@@ -395,7 +364,7 @@ function ScoreCell({ combination, formatters }: { combination: Combination; form
               key={segment.key}
               style={{
                 width: `${segment.value}%`,
-                backgroundColor: SCORE_COLORS[segment.key],
+                backgroundColor: COMBINATION_SCORE_COLORS[segment.key],
               }}
             />
           ))}
@@ -426,7 +395,7 @@ function CombinationsTable({
   onExplain,
 }: {
   combinations: Combination[];
-  formatters: Formatters;
+  formatters: CombinationFormatters;
   context: ExplainContext;
   onExplain: (prompt: string) => void;
 }) {
@@ -475,7 +444,7 @@ function CombinationsTable({
               <TableCell className="tabular-nums text-right">
                 {formatters.int.format(combination.supportCount)}
               </TableCell>
-              <TableCell className="tabular-nums text-right">{pct(combination.support)}</TableCell>
+              <TableCell className="tabular-nums text-right">{formatPercentage(combination.support)}</TableCell>
               <TableCell className="text-right">
                 <LiftCell lift={combination.economics.lift} />
               </TableCell>
@@ -519,7 +488,7 @@ function CombinationsTable({
   );
 }
 
-function RulesTable({ rules, formatters }: { rules: Rule[]; formatters: Formatters }) {
+function RulesTable({ rules, formatters }: { rules: Rule[]; formatters: CombinationFormatters }) {
   if (rules.length === 0) {
     return <Empty>Nenhuma regra passou dos cortes de confiança e lift.</Empty>;
   }
@@ -557,9 +526,9 @@ function RulesTable({ rules, formatters }: { rules: Rule[]; formatters: Formatte
               <TableCell className="tabular-nums text-right">
                 <HoverTip
                   className="cursor-help"
-                  content={`${pct(rule.confidence)} de quem levou o primeiro também levou o segundo, em ${formatters.int.format(rule.supportCount)} ${rule.supportCount === 1 ? "pedido" : "pedidos"}.`}
+                  content={`${formatPercentage(rule.confidence)} de quem levou o primeiro também levou o segundo, em ${formatters.int.format(rule.supportCount)} ${rule.supportCount === 1 ? "pedido" : "pedidos"}.`}
                 >
-                  {pct(rule.confidence)}
+                  {formatPercentage(rule.confidence)}
                 </HoverTip>
               </TableCell>
               <TableCell className="text-right">
@@ -573,7 +542,7 @@ function RulesTable({ rules, formatters }: { rules: Rule[]; formatters: Formatte
   );
 }
 
-function SequencesTable({ sequences, formatters }: { sequences: Sequence[]; formatters: Formatters }) {
+function SequencesTable({ sequences, formatters }: { sequences: Sequence[]; formatters: CombinationFormatters }) {
   if (sequences.length === 0) {
     return (
       <Empty>
@@ -619,7 +588,7 @@ function SequencesTable({ sequences, formatters }: { sequences: Sequence[]; form
               <TableCell className="tabular-nums text-right">
                 {formatters.int.format(sequence.customersWithBoth)}
                 <span className="text-muted-foreground"> de {formatters.int.format(sequence.customersWithFrom)}</span>
-                <span className="block text-[11px] text-muted-foreground">{pct(sequence.confidence)}</span>
+                <span className="block text-[11px] text-muted-foreground">{formatPercentage(sequence.confidence)}</span>
               </TableCell>
               <TableCell className="tabular-nums text-right">
                 ~{formatters.decimal.format(sequence.medianDaysBetween)} dias
@@ -642,7 +611,7 @@ function ScoreExplainer() {
       key: "lift" as const,
       icon: <TrendingUp className="size-4" />,
       title: "O padrão é real?",
-      description: `Lift normalizado pelo teto de ${LIFT_CEILING}x — acima disso a diferença costuma ser base pequena, não um padrão melhor.`,
+      description: `Lift normalizado pelo teto de ${LIFT_NORMALIZATION_CEILING}x — acima disso a diferença costuma ser base pequena, não um padrão melhor.`,
     },
     {
       key: "margin" as const,
@@ -669,14 +638,17 @@ function ScoreExplainer() {
           icon={axis.icon}
           title={
             <span className="flex items-center gap-2">
-              <span className="rounded-[2px] size-2 shrink-0" style={{ backgroundColor: SCORE_COLORS[axis.key] }} />
+              <span
+                className="rounded-[2px] size-2 shrink-0"
+                style={{ backgroundColor: COMBINATION_SCORE_COLORS[axis.key] }}
+              />
               {axis.title}
             </span>
           }
           description={axis.description}
           right={
             <Badge variant="secondary" className="px-2 py-0.5 tabular-nums">
-              até {SCORE_WEIGHTS[axis.key]} pts
+              até {COMBINATION_SCORE_WEIGHTS[axis.key]} pts
             </Badge>
           }
         />
@@ -729,23 +701,12 @@ function Spinner({ label }: { label: string }) {
   );
 }
 
-/** Extrai a mensagem de erro de um CallToolResult que veio com isError. */
-function errorTextOf(result: { content?: unknown }): string {
-  const content = Array.isArray(result.content) ? result.content : [];
-  for (const block of content) {
-    if (typeof block === "object" && block !== null && (block as { type?: string }).type === "text") {
-      return String((block as { text?: string }).text ?? "");
-    }
-  }
-  return "A tool retornou um erro sem mensagem.";
-}
-
 export default function DiscoverCombinationsPage() {
   const state = useMcpState<DiscoverCombinationsInput, DiscoverCombinationsOutput>();
   const app = useMcpApp();
   const hostContext = useMcpHostContext();
   const isFullscreen = hostContext?.displayMode === "fullscreen";
-  const formatters = useFormatters();
+  const formatters = createCombinationFormatters();
 
   // Resultado de uma re-execução disparada pela própria tela. Sobrepõe o
   // resultado que veio do host até a próxima chamada da tool.
@@ -773,7 +734,7 @@ export default function DiscoverCombinationsPage() {
         arguments: { periodDays: days },
       });
 
-      if (response.isError) throw new Error(errorTextOf(response));
+      if (response.isError) throw new Error(extractToolErrorText(response));
 
       const structured = response.structuredContent as DiscoverCombinationsOutput | undefined;
       if (!structured) {
@@ -899,29 +860,29 @@ export default function DiscoverCombinationsPage() {
 
       <Section>
         <div className="gap-3 grid grid-cols-2 lg:grid-cols-4">
-          <Kpi
+          <MetricCard
             icon={<Layers className="size-3.5" />}
             label="Combinações"
             value={formatters.int.format(summary.combinationsFound)}
             hint={
               best
-                ? `A melhor tem score ${best.score} e lift ${liftLabel(best.economics.lift)}.`
+                ? `A melhor tem score ${best.score} e lift ${formatLiftMultiplier(best.economics.lift)}.`
                 : "Nenhuma passou dos cortes configurados."
             }
           />
-          <Kpi
+          <MetricCard
             icon={<Coins className="size-3.5" />}
             label="Margem incremental"
             value={formatters.money.format(totalIncremental)}
             hint="Soma das combinações listadas, já descontado o que o acaso explicaria."
           />
-          <Kpi
+          <MetricCard
             icon={<Package className="size-3.5" />}
             label="Pedidos com 2+ itens"
-            value={pct(attachRate)}
+            value={formatPercentage(attachRate)}
             hint={`${formatters.int.format(summary.multiItemOrders)} de ${formatters.int.format(summary.ordersAnalyzed)} — só esses podem formar combinação.`}
           />
-          <Kpi
+          <MetricCard
             icon={<Users className="size-3.5" />}
             label="Clientes recorrentes"
             value={formatters.int.format(summary.customersAnalyzed)}

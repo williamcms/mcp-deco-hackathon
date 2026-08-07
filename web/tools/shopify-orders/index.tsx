@@ -2,6 +2,7 @@ import { ErrorScreen } from "@/components/error-screen.tsx";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.tsx";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table.tsx";
 import { useMcpState } from "@/context.tsx";
+import { formatOrderDate } from "@/utils/formatters.ts";
 import type { ShopifyOrdersInput, ShopifyOrdersOutput } from "../../../api/tools/shopify-orders.ts";
 
 function Centered({ children }: { children: React.ReactNode }) {
@@ -17,10 +18,6 @@ function Spinner({ label }: { label: string }) {
       </div>
     </Centered>
   );
-}
-
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("pt-BR");
 }
 
 export default function ShopifyOrdersPage() {
@@ -71,7 +68,7 @@ export default function ShopifyOrdersPage() {
             <span className="font-normal text-muted-foreground text-sm">
               {result?.ordersScanned ?? 0} pedido
               {result?.ordersScanned === 1 ? "" : "s"}
-              {result?.from ? ` desde ${formatDate(result.from)}` : ""}
+              {result?.from ? ` desde ${formatOrderDate(result.from)}` : ""}
             </span>
           </CardTitle>
         </CardHeader>
