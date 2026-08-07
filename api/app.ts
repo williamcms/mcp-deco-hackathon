@@ -3,7 +3,6 @@ import { prompts } from "./prompts/index.ts";
 import { collectShopifySalesAppResource } from "./resources/collect-shopify-sales.ts";
 import { createBundleAppResource } from "./resources/create-bundle.ts";
 import { discoverCombinationsAppResource } from "./resources/discover-combinations.ts";
-import { helloAppResource } from "./resources/hello.ts";
 import { shopifyOrdersAppResource } from "./resources/shopify-orders.ts";
 import { tools } from "./tools/index.ts";
 import { type Env, StateSchema } from "./types/env.ts";
@@ -106,7 +105,6 @@ const runtime = withRuntime<Env, typeof StateSchema>({
 	tools,
 	prompts,
 	resources: [
-		helloAppResource,
 		shopifyOrdersAppResource,
 		collectShopifySalesAppResource,
 		discoverCombinationsAppResource,
