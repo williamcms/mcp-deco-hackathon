@@ -1310,6 +1310,8 @@ function buildBundleSuggestionPrompt(result: CreateBundleOutput): string {
     ...scenarioLines,
     "",
     "Recomende um desconto (ou nenhum) e explique o porquê em 2-3 frases, considerando margem e atratividade para o cliente.",
+    // Calling a tool here would re-invoke discover_combinations and reload this UI mid-edit.
+    "Responda só em texto — não chame nenhuma tool para isso.",
   ].join("\n");
 }
 
@@ -1352,6 +1354,7 @@ function BundlePreview({
   });
   const canRemove = result.components.length > 2;
   const discountTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [suggestionAsked, setSuggestionAsked] = useState(false);
 
   return (
     <div className="flex flex-col gap-4">
@@ -1500,9 +1503,18 @@ function BundlePreview({
 
       <div className="flex justify-between items-center gap-2">
         {isCreated ? null : (
-          <SmallButton variant="ghost" onClick={onAskSuggestion} disabled={busy}>
-            Pedir sugestão à IA
-          </SmallButton>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              setSuggestionAsked(true);
+              onAskSuggestion();
+            }}
+            className="inline-flex justify-center items-center gap-1.5 disabled:opacity-50 bg-primary/10 hover:bg-primary/15 px-2.5 rounded-lg h-7 text-primary text-sm whitespace-nowrap transition-colors disabled:pointer-events-none"
+          >
+            <Sparkles className="size-3.5" />
+            Sugestão
+          </button>
         )}
         <div className="flex justify-end gap-2">
           {isCreated ? (
@@ -1521,9 +1533,11 @@ function BundlePreview({
           )}
         </div>
       </div>
-      {isCreated ? null : (
-        <p className="text-muted-foreground text-xs">A resposta da IA aparece no chat, não aqui no modal.</p>
-      )}
+      {suggestionAsked ? (
+        <p className="text-muted-foreground text-xs text-center">
+          A resposta da IA aparece no chat, não aqui no modal.
+        </p>
+      ) : null}
     </div>
   );
 }
