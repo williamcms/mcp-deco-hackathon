@@ -1,6 +1,7 @@
 import { withRuntime } from "@decocms/runtime";
 import { prompts } from "./prompts/index.ts";
 import { collectShopifySalesAppResource } from "./resources/collect-shopify-sales.ts";
+import { createBundleAppResource } from "./resources/create-bundle.ts";
 import { discoverCombinationsAppResource } from "./resources/discover-combinations.ts";
 import { helloAppResource } from "./resources/hello.ts";
 import { shopifyOrdersAppResource } from "./resources/shopify-orders.ts";
@@ -109,6 +110,7 @@ const runtime = withRuntime<Env, typeof StateSchema>({
 		shopifyOrdersAppResource,
 		collectShopifySalesAppResource,
 		discoverCombinationsAppResource,
+		createBundleAppResource,
 	],
 });
 
