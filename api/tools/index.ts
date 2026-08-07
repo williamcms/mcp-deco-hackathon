@@ -1,4 +1,5 @@
 import { collectShopifySalesTool } from "./collect-shopify-sales.ts";
 import { helloTool } from "./hello.ts";
+import { shopifyOrdersTool } from "./shopify-orders.ts";
 
-export const tools = [helloTool, collectShopifySalesTool];
+export const tools = [helloTool, shopifyOrdersTool];
