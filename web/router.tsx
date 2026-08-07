@@ -9,10 +9,11 @@ import {
 import { useMcpHostContext, useMcpState } from "./context.tsx";
 import CollectShopifySalesPage from "./tools/collect-shopify-sales/index.tsx";
 import HelloPage from "./tools/hello/index.tsx";
+import ShopifyOrdersPage from "./tools/shopify-orders/index.tsx";
 
 const TOOL_PAGES: Record<string, React.ComponentType> = {
 	hello_world: HelloPage,
-	collect_shopify_sales: CollectShopifySalesPage,
+	shopify_orders: ShopifyOrdersPage,
 };
 
 function ToolRouter() {
