@@ -39,6 +39,7 @@ function line(spec: LineSpec): ShopifyLineItem {
 			id: spec.productId,
 			title: spec.title ?? spec.productId,
 			productType: "Teste",
+			tags: [],
 			category: null,
 		},
 		variant: {

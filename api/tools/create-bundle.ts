@@ -103,6 +103,9 @@ const plannedComponentSchema = z.object({
   variantId: z.string(),
   variantTitle: z.string().nullable(),
   optionSelections: z.array(z.object({ name: z.string(), values: z.array(z.string()) })),
+  availableOptions: z
+    .array(z.object({ name: z.string(), values: z.array(z.string()) }))
+    .describe("Todos os valores que cada opção oferece, não só o escolhido — para montar um seletor de variante"),
   unitPrice: z.number(),
   unitCost: z.number().nullable(),
   lineTotal: z.number(),

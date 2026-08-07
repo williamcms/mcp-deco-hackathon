@@ -47,6 +47,8 @@ export interface PlannedComponent {
 	variantId: string;
 	variantTitle: string | null;
 	optionSelections: Array<{ name: string; values: string[] }>;
+	/** Every value each option actually offers — not just what got picked. Lets the UI show a variant picker. */
+	availableOptions: Array<{ name: string; values: string[] }>;
 	unitPrice: number;
 	unitCost: number | null;
 	lineTotal: number;
@@ -193,11 +195,13 @@ export function buildBundlePlan(
 		}
 
 		const optionSelections: Array<{ name: string; values: string[] }> = [];
+		const availableOptions: Array<{ name: string; values: string[] }> = [];
 		const rawSelections: Array<{ optionName: string; values: string[] }> = [];
 		const mutationSelections: BundleComponentInput["optionSelections"] = [];
 
 		for (const option of product.options) {
 			const available = option.optionValues.map((value) => value.name);
+			availableOptions.push({ name: option.name, values: available });
 			const requested = request.options?.find(
 				(entry) => entry.name.toLowerCase() === option.name.toLowerCase(),
 			);
@@ -270,6 +274,7 @@ export function buildBundlePlan(
 			variantId: variant.id,
 			variantTitle: variant.title,
 			optionSelections,
+			availableOptions,
 			unitPrice: round2(unitPrice),
 			unitCost: unitCost != null ? round2(unitCost) : null,
 			lineTotal: round2(unitPrice * request.quantity),

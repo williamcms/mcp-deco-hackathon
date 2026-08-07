@@ -42,6 +42,7 @@ import {
   Sparkles,
   TrendingUp,
   Users,
+  X,
 } from "lucide-react";
 import { Fragment, type ReactNode, useEffect, useRef, useState } from "react";
 import { Area, AreaChart, CartesianGrid, Tooltip, XAxis, YAxis } from "recharts";
@@ -1291,6 +1292,27 @@ function Spinner({ label }: { label: string }) {
   );
 }
 
+/** Asks for a discount recommendation using the scenarios create_bundle already computed — no extra data needed. */
+function buildBundleSuggestionPrompt(result: CreateBundleOutput): string {
+  const componentNames = result.components.map((component) => component.title).join(" + ");
+  const scenarioLines = result.scenarios.map(
+    (scenario) =>
+      `- ${scenario.label}: preço ${scenario.bundlePrice}, economia ${scenario.savings}, margem ${
+        scenario.marginPerBundle ?? "sem custo cadastrado"
+      }${scenario.marginPct != null ? ` (${scenario.marginPct}%)` : ""}`,
+  );
+
+  return [
+    `Sugira o desconto ideal para o bundle "${componentNames}".`,
+    "",
+    `Preço sem desconto: ${result.pricing.componentsTotal}`,
+    "Cenários já calculados:",
+    ...scenarioLines,
+    "",
+    "Recomende um desconto (ou nenhum) e explique o porquê em 2-3 frases, considerando margem e atratividade para o cliente.",
+  ].join("\n");
+}
+
 /**
  * create_bundle's result shown inline, since the tool has no UI of its own.
  * A simulation (dryRun) shows the publish button; once created, just the
@@ -1300,14 +1322,27 @@ function BundlePreview({
   title,
   result,
   busy,
+  discountPct,
+  duplicate,
   onPublish,
   onDismiss,
+  onChangeOption,
+  onChangeDiscount,
+  onRemoveComponent,
+  onAskSuggestion,
 }: {
   title: string;
   result: CreateBundleOutput;
   busy: boolean;
+  discountPct: number;
+  /** True when an existing bundle already has this exact title. */
+  duplicate: boolean;
   onPublish: () => void;
   onDismiss: () => void;
+  onChangeOption: (productId: string, optionName: string, value: string) => void;
+  onChangeDiscount: (value: number) => void;
+  onRemoveComponent: (productId: string) => void;
+  onAskSuggestion: () => void;
 }) {
   const isCreated = result.mode === "created";
   const money = new Intl.NumberFormat("pt-BR", {
@@ -1315,85 +1350,181 @@ function BundlePreview({
     currency: result.pricing.currency || "BRL",
     maximumFractionDigits: 2,
   });
-  const componentNames = result.components.map((component) => component.title).join(" + ");
+  const canRemove = result.components.length > 2;
+  const discountTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   return (
-    <Card>
-      <Row
-        first
-        icon={<Package className="size-4" />}
-        title={
-          <span className="flex items-center gap-2">
-            {title}
-            <Badge
-              variant="secondary"
-              className={isCreated ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" : undefined}
-            >
-              {isCreated ? "Criado" : "Simulação"}
-            </Badge>
-          </span>
-        }
-        description={componentNames}
-        right={
-          isCreated ? (
+    <div className="flex flex-col gap-4">
+      <Card>
+        <Row
+          first
+          icon={<Package className="size-4" />}
+          title={isCreated ? "Bundle criado" : "Simulação — revise os produtos e o preço antes de criar"}
+        />
+        <div className="flex flex-col gap-2 px-4 py-3 border-t border-border">
+          {result.components.map((component) => (
+            <div key={component.productId} className="flex flex-col gap-1.5">
+              <div className="flex justify-between items-center gap-3">
+                <span className="text-sm truncate">{component.title}</span>
+                {!isCreated && canRemove ? (
+                  <button
+                    type="button"
+                    aria-label={`Remover ${component.title} do kit`}
+                    disabled={busy}
+                    onClick={() => onRemoveComponent(component.productId)}
+                    className="flex justify-center items-center hover:bg-accent rounded-md size-6 text-muted-foreground shrink-0"
+                  >
+                    <X className="size-3.5" />
+                  </button>
+                ) : null}
+              </div>
+              {/* Matched to optionSelections by index, not name: a name collision across
+                  components (e.g. two products both with "Tamanho") gets disambiguated
+                  server-side, so the two arrays no longer share the same option name. */}
+              {component.availableOptions.map((option, index) =>
+                option.values.length > 1 ? (
+                  <div key={option.name} className="flex justify-between items-center gap-3 pl-3">
+                    <span className="text-muted-foreground text-xs">{option.name}</span>
+                    <select
+                      className="bg-background px-2 py-1 border border-border rounded-md text-xs"
+                      value={component.optionSelections[index]?.values[0] ?? option.values[0]}
+                      disabled={busy}
+                      onChange={(event) => onChangeOption(component.productId, option.name, event.target.value)}
+                    >
+                      {option.values.map((value) => (
+                        <option key={value} value={value}>
+                          {value}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ) : null,
+              )}
+            </div>
+          ))}
+        </div>
+        <Row
+          icon={<Coins className="size-4" />}
+          title={
+            result.pricing.savings > 0 ? (
+              <span className="flex items-center gap-2">
+                Preço do kit:
+                <span className="text-muted-foreground line-through">
+                  {money.format(result.pricing.componentsTotal)}
+                </span>
+                <span>{money.format(result.pricing.bundlePrice)}</span>
+              </span>
+            ) : (
+              `Preço do kit: ${money.format(result.pricing.bundlePrice)}`
+            )
+          }
+          description={
+            <span className="flex flex-col">
+              <span>Economia {money.format(result.pricing.savings)}</span>
+              <span>
+                {result.pricing.marginPerBundle != null
+                  ? `Margem ${money.format(result.pricing.marginPerBundle)} (${formatPercentage(result.pricing.marginPct ?? 0)})`
+                  : "Falta custo unitário cadastrado para calcular margem."}
+              </span>
+            </span>
+          }
+          right={
+            isCreated ? undefined : (
+              <label className="flex items-center gap-1.5 text-muted-foreground text-xs">
+                Desconto
+                <input
+                  type="number"
+                  min={0}
+                  max={90}
+                  defaultValue={discountPct}
+                  disabled={busy}
+                  onChange={(event) => {
+                    const value = Number(event.target.value) || 0;
+                    if (discountTimer.current) clearTimeout(discountTimer.current);
+                    discountTimer.current = setTimeout(() => onChangeDiscount(value), 1000);
+                  }}
+                  className="bg-background px-2 py-1 border border-border rounded-md w-16 text-right"
+                />
+                %
+              </label>
+            )
+          }
+        />
+        <Row
+          icon={<Layers className="size-4" />}
+          title={`Viabilidade de estoque: ${INVENTORY_VIABILITY_LABELS[result.inventory.level]}`}
+          description={
+            result.inventory.maxBundles != null
+              ? `O estoque atual monta ${result.inventory.maxBundles} ${result.inventory.maxBundles === 1 ? "kit" : "kits"}.`
+              : "Algum componente está sem estoque informado."
+          }
+        />
+        {isCreated && result.bundle ? (
+          <Row
+            icon={<ArrowRight className="size-4" />}
+            title="Bundle publicado no admin"
+            description={result.bundle.adminUrl}
+            right={
+              <a
+                href={result.bundle.adminUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 text-xs underline underline-offset-2"
+              >
+                Abrir
+              </a>
+            }
+          />
+        ) : null}
+        {duplicate ? (
+          <Row
+            icon={<AlertTriangle className="size-4 text-amber-600 dark:text-amber-400" />}
+            title={
+              <span className="font-normal text-muted-foreground">
+                Já existe um bundle chamado "{title}" — mude o título ou os produtos antes de criar.
+              </span>
+            }
+          />
+        ) : null}
+        {/* Options warnings are redundant once the picker above lets you fix them directly. */}
+        {result.warnings
+          .filter((warning) => !warning.includes("nenhum foi escolhido"))
+          .map((warning) => (
+            <Row
+              key={warning}
+              icon={<AlertTriangle className="size-4 text-amber-600 dark:text-amber-400" />}
+              title={<span className="font-normal text-muted-foreground">{warning}</span>}
+            />
+          ))}
+      </Card>
+
+      <div className="flex justify-between items-center gap-2">
+        {isCreated ? null : (
+          <SmallButton variant="ghost" onClick={onAskSuggestion} disabled={busy}>
+            Pedir sugestão à IA
+          </SmallButton>
+        )}
+        <div className="flex justify-end gap-2">
+          {isCreated ? (
             <SmallButton variant="ghost" onClick={onDismiss}>
               Fechar
             </SmallButton>
           ) : (
-            <div className="flex items-center gap-1.5">
+            <>
               <SmallButton variant="ghost" onClick={onDismiss} disabled={busy}>
                 Cancelar
               </SmallButton>
-              <SmallButton onClick={onPublish} disabled={busy}>
+              <SmallButton active onClick={onPublish} disabled={busy || duplicate}>
                 {busy ? "Criando..." : "Criar bundle na Shopify"}
               </SmallButton>
-            </div>
-          )
-        }
-      />
-      <Row
-        icon={<Coins className="size-4" />}
-        title={`Preço do kit: ${money.format(result.pricing.bundlePrice)}`}
-        description={
-          result.pricing.marginPerBundle != null
-            ? `Economia ${money.format(result.pricing.savings)} · Margem ${money.format(result.pricing.marginPerBundle)} (${formatPercentage(result.pricing.marginPct ?? 0)})`
-            : `Economia ${money.format(result.pricing.savings)} · Falta custo unitário cadastrado para calcular margem.`
-        }
-      />
-      <Row
-        icon={<Layers className="size-4" />}
-        title={`Viabilidade de estoque: ${INVENTORY_VIABILITY_LABELS[result.inventory.level]}`}
-        description={
-          result.inventory.maxBundles != null
-            ? `O estoque atual monta ${result.inventory.maxBundles} ${result.inventory.maxBundles === 1 ? "kit" : "kits"}.`
-            : "Algum componente está sem estoque informado."
-        }
-      />
-      {isCreated && result.bundle ? (
-        <Row
-          icon={<ArrowRight className="size-4" />}
-          title="Bundle publicado no admin"
-          description={result.bundle.adminUrl}
-          right={
-            <a
-              href={result.bundle.adminUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1 text-xs underline underline-offset-2"
-            >
-              Abrir
-            </a>
-          }
-        />
-      ) : null}
-      {result.warnings.map((warning) => (
-        <Row
-          key={warning}
-          icon={<AlertTriangle className="size-4 text-amber-600 dark:text-amber-400" />}
-          title={<span className="font-normal text-muted-foreground">{warning}</span>}
-        />
-      ))}
-    </Card>
+            </>
+          )}
+        </div>
+      </div>
+      {isCreated ? null : (
+        <p className="text-muted-foreground text-xs">A resposta da IA aparece no chat, não aqui no modal.</p>
+      )}
+    </div>
   );
 }
 
@@ -1417,11 +1548,15 @@ export default function DiscoverCombinationsPage() {
   // combination.
   const [bundlePreview, setBundlePreview] = useState<{
     title: string;
-    components: Array<{ productId: string }>;
+    components: Array<{ productId: string; options?: Array<{ name: string; values: string[] }> }>;
     result: CreateBundleOutput;
   } | null>(null);
   const [bundleBusy, setBundleBusy] = useState<"simulate" | "publish" | null>(null);
   const [bundleError, setBundleError] = useState<string | null>(null);
+  // Opens right away on "Montar bundle", before the simulation responds, so
+  // there's a modal with a spinner instead of a dead pause after the click.
+  const [bundleModalOpen, setBundleModalOpen] = useState(false);
+  const [bundleDiscountPct, setBundleDiscountPct] = useState(0);
 
   const [sortBy, setSortBy] = useState<SortKey>("score");
   const [glossaryOpen, setGlossaryOpen] = useState(false);
@@ -1476,7 +1611,12 @@ export default function DiscoverCombinationsPage() {
    * (`_meta.ui`), so the result is handled right here, as a preview inside
    * this screen.
    */
-  async function runCreateBundle(title: string, components: Array<{ productId: string }>, dryRun: boolean) {
+  async function runCreateBundle(
+    title: string,
+    components: Array<{ productId: string; options?: Array<{ name: string; values: string[] }> }>,
+    dryRun: boolean,
+    discountPct: number = bundleDiscountPct,
+  ) {
     if (!app || bundleBusy) return;
 
     setBundleBusy(dryRun ? "simulate" : "publish");
@@ -1485,7 +1625,7 @@ export default function DiscoverCombinationsPage() {
     try {
       const response = await app.callServerTool({
         name: "create_bundle",
-        arguments: { components, dryRun },
+        arguments: { components, dryRun, discountPercentage: discountPct },
       });
 
       if (response.isError) throw new Error(extractToolErrorText(response));
@@ -1507,7 +1647,57 @@ export default function DiscoverCombinationsPage() {
     const components = combination.products.map((product) => ({
       productId: product.id,
     }));
-    runCreateBundle(combinationTitle(combination), components, true);
+    setBundlePreview(null);
+    setBundleError(null);
+    setBundleModalOpen(true);
+    setBundleDiscountPct(0);
+    runCreateBundle(combinationTitle(combination), components, true, 0);
+  }
+
+  function changeBundleDiscount(value: number) {
+    if (!bundlePreview) return;
+    setBundleDiscountPct(value);
+    runCreateBundle(bundlePreview.title, bundlePreview.components, true, value);
+  }
+
+  /** Re-simulates without one component — blocked below 2, since a bundle needs at least that many. */
+  function removeBundleComponent(productId: string) {
+    if (!bundlePreview || bundlePreview.result.components.length <= 2) return;
+
+    const components = bundlePreview.result.components
+      .filter((component) => component.productId !== productId)
+      .map((component) => ({
+        productId: component.productId,
+        options: component.availableOptions.map((option, index) => ({
+          name: option.name,
+          values: [component.optionSelections[index]?.values[0] ?? option.values[0]],
+        })),
+      }));
+
+    runCreateBundle(bundlePreview.title, components, true);
+  }
+
+  /**
+   * Re-simulates with one option pinned to a chosen value. Rebuilds every
+   * component's full option set from the last result (not just the one that
+   * changed) so earlier picks in this same session aren't lost.
+   */
+  function changeBundleOption(productId: string, optionName: string, value: string) {
+    if (!bundlePreview) return;
+
+    const components = bundlePreview.result.components.map((component) => ({
+      productId: component.productId,
+      options: component.availableOptions.map((option, index) => ({
+        name: option.name,
+        values: [
+          component.productId === productId && option.name === optionName
+            ? value
+            : (component.optionSelections[index]?.values[0] ?? option.values[0]),
+        ],
+      })),
+    }));
+
+    runCreateBundle(bundlePreview.title, components, true);
   }
 
   /** Publishes a draft bundle (status DRAFT -> ACTIVE), only after the confirmation modal's own click. */
@@ -1727,24 +1917,6 @@ export default function DiscoverCombinationsPage() {
               </Card>
             </Section>
 
-            {bundleError || bundlePreview ? (
-              <Section title="Montar bundle">
-                {bundleError ? (
-                  <Alert icon={<AlertTriangle className="size-4" />} tone="danger">
-                    {bundleError}
-                  </Alert>
-                ) : null}
-                {bundlePreview ? (
-                  <BundlePreview
-                    title={bundlePreview.title}
-                    result={bundlePreview.result}
-                    busy={bundleBusy !== null}
-                    onPublish={() => runCreateBundle(bundlePreview.title, bundlePreview.components, false)}
-                    onDismiss={() => setBundlePreview(null)}
-                  />
-                ) : null}
-              </Section>
-            ) : null}
           </div>
         </TabsContent>
 
@@ -1808,6 +1980,49 @@ export default function DiscoverCombinationsPage() {
           <span className="overflow-hidden whitespace-nowrap">Como ler estes números</span>
         </span>
       </button>
+
+      <Modal
+        open={bundleModalOpen}
+        onClose={() => {
+          if (bundleBusy) return;
+          setBundleModalOpen(false);
+          setBundlePreview(null);
+          setBundleError(null);
+        }}
+        title="Montar bundle"
+      >
+        <div className="flex flex-col gap-4">
+          {bundleBusy === "simulate" && !bundlePreview && !bundleError ? (
+            <Spinner label="Calculando o kit..." />
+          ) : (
+            <>
+              {bundleError ? (
+                <Alert icon={<AlertTriangle className="size-4" />} tone="danger">
+                  {bundleError}
+                </Alert>
+              ) : null}
+              {bundlePreview ? (
+                <BundlePreview
+                  title={bundlePreview.title}
+                  result={bundlePreview.result}
+                  busy={bundleBusy !== null}
+                  discountPct={bundleDiscountPct}
+                  duplicate={[...bundles.draft, ...bundles.active].some((b) => b.title === bundlePreview.title)}
+                  onPublish={() => runCreateBundle(bundlePreview.title, bundlePreview.components, false)}
+                  onDismiss={() => {
+                    setBundleModalOpen(false);
+                    setBundlePreview(null);
+                  }}
+                  onChangeOption={changeBundleOption}
+                  onChangeDiscount={changeBundleDiscount}
+                  onRemoveComponent={removeBundleComponent}
+                  onAskSuggestion={() => askHost(buildBundleSuggestionPrompt(bundlePreview.result))}
+                />
+              ) : null}
+            </>
+          )}
+        </div>
+      </Modal>
 
       <Modal open={glossaryOpen} onClose={() => setGlossaryOpen(false)} title="Como ler estes números">
         <div className="flex flex-col gap-6">
