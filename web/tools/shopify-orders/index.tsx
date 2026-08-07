@@ -52,13 +52,8 @@ function ErrorCard({ title, message }: { title: string; message: string }) {
 	);
 }
 
-function formatMoney(amount: string, currency: string): string {
-	const value = Number(amount);
-	if (Number.isNaN(value)) return `${amount} ${currency}`;
-	return new Intl.NumberFormat("pt-BR", {
-		style: "currency",
-		currency,
-	}).format(value);
+function formatDate(iso: string): string {
+	return new Date(iso).toLocaleDateString("pt-BR");
 }
 
 export default function ShopifyOrdersPage() {
@@ -73,11 +68,12 @@ export default function ShopifyOrdersPage() {
 			<Centered>
 				<Card className="w-full max-w-md text-center">
 					<CardHeader>
-						<CardTitle>Pedidos Shopify</CardTitle>
+						<CardTitle>Combinações de produtos</CardTitle>
 					</CardHeader>
 					<CardContent>
 						<p className="text-muted-foreground text-sm">
-							Conectado. Chame a tool shopify_orders para ver os pedidos aqui.
+							Conectado. Chame a tool shopify_orders para ver as combinações
+							aqui.
 						</p>
 					</CardContent>
 				</Card>
@@ -94,14 +90,11 @@ export default function ShopifyOrdersPage() {
 	}
 
 	if (state.status === "tool-input") {
-		return <Spinner label="Buscando pedidos na Shopify..." />;
+		return <Spinner label="Varrendo pedidos na Shopify..." />;
 	}
 
 	const result = state.toolResult;
-	const orders = result?.orders ?? [];
-
-	const total = orders.reduce((sum, order) => sum + Number(order.total), 0);
-	const currency = orders[0]?.currency ?? "BRL";
+	const combinations = result?.combinations ?? [];
 
 	return (
 		<div className="min-h-dvh p-6">
@@ -110,14 +103,16 @@ export default function ShopifyOrdersPage() {
 					<CardTitle className="flex items-baseline justify-between gap-4">
 						<span>{result?.shop ?? "Loja"}</span>
 						<span className="text-sm font-normal text-muted-foreground">
-							{orders.length} pedido{orders.length === 1 ? "" : "s"}
+							{result?.ordersScanned ?? 0} pedido
+							{result?.ordersScanned === 1 ? "" : "s"}
+							{result?.from ? ` desde ${formatDate(result.from)}` : ""}
 						</span>
 					</CardTitle>
 				</CardHeader>
 				<CardContent>
-					{orders.length === 0 ? (
+					{combinations.length === 0 ? (
 						<p className="text-sm text-muted-foreground py-8 text-center">
-							Nenhum pedido encontrado.
+							Nenhuma combinação encontrada nesse período.
 						</p>
 					) : (
 						<>
@@ -125,36 +120,39 @@ export default function ShopifyOrdersPage() {
 								<Table>
 									<TableHeader>
 										<TableRow>
-											<TableHead>Pedido</TableHead>
-											<TableHead>Data</TableHead>
-											<TableHead className="text-right">Total</TableHead>
+											<TableHead>Combinação</TableHead>
+											<TableHead className="text-right">Ocorrências</TableHead>
 										</TableRow>
 									</TableHeader>
 									<TableBody>
-										{orders.map((order) => (
-											<TableRow key={order.name}>
-												<TableCell className="font-medium">
-													{order.name}
+										{combinations.map((combination) => (
+											<TableRow key={combination.lines.map((l) => l.id).join("|")}>
+												<TableCell>
+													<div className="flex flex-wrap gap-1.5">
+														{combination.lines.map((line) => (
+															<span
+																key={line.id}
+																className="text-xs bg-muted rounded px-2 py-0.5"
+															>
+																{line.title}
+															</span>
+														))}
+													</div>
 												</TableCell>
-												<TableCell className="text-muted-foreground">
-													{new Date(order.createdAt).toLocaleString("pt-BR")}
-												</TableCell>
-												<TableCell className="text-right tabular-nums">
-													{formatMoney(order.total, order.currency)}
+												<TableCell className="text-right tabular-nums font-semibold align-top">
+													{combination.occurances}
 												</TableCell>
 											</TableRow>
 										))}
 									</TableBody>
 								</Table>
 							</div>
-							<div className="flex justify-between items-baseline mt-4 pt-4 border-t">
-								<span className="text-sm text-muted-foreground">
-									Soma dos pedidos exibidos
-								</span>
-								<span className="text-lg font-semibold tabular-nums">
-									{formatMoney(String(total), currency)}
-								</span>
-							</div>
+							{result?.truncated ? (
+								<p className="text-xs text-muted-foreground mt-4 pt-4 border-t">
+									O período tem mais pedidos do que foi possível varrer — os
+									números são um recorte parcial.
+								</p>
+							) : null}
 						</>
 					)}
 				</CardContent>

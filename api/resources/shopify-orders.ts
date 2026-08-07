@@ -17,7 +17,7 @@ export const shopifyOrdersAppResource = (_env: Env) =>
 	createPublicResource({
 		uri: SHOPIFY_ORDERS_RESOURCE_URI,
 		name: "Shopify Orders UI",
-		description: "Tabela com os últimos pedidos da loja",
+		description: "Tabela com as combinações de produtos vendidos juntos",
 		mimeType: RESOURCE_MIME_TYPE,
 		read: async () => {
 			const html = await readFile(getDistPath(), "utf-8");
