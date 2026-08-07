@@ -1,88 +1,82 @@
 import { createHashHistory } from "@tanstack/history";
-import {
-	createRootRoute,
-	createRoute,
-	createRouter,
-	Outlet,
-	RouterProvider,
-} from "@tanstack/react-router";
+import { createRootRoute, createRoute, createRouter, Outlet, RouterProvider } from "@tanstack/react-router";
 import { useMcpHostContext, useMcpState } from "./context.tsx";
 import CollectShopifySalesPage from "./tools/collect-shopify-sales/index.tsx";
-import CreateBundlePage from "./tools/create-bundle/index.tsx";
 import DiscoverCombinationsPage from "./tools/discover-combinations/index.tsx";
+import ListBundlesPage from "./tools/list-bundles/index.tsx";
 import ShopifyOrdersPage from "./tools/shopify-orders/index.tsx";
 
 const TOOL_PAGES: Record<string, React.ComponentType> = {
-	shopify_orders: ShopifyOrdersPage,
-	collect_shopify_sales: CollectShopifySalesPage,
-	discover_combinations: DiscoverCombinationsPage,
-	create_bundle: CreateBundlePage,
+  shopify_orders: ShopifyOrdersPage,
+  collect_shopify_sales: CollectShopifySalesPage,
+  discover_combinations: DiscoverCombinationsPage,
+  list_bundles: ListBundlesPage,
 };
 
 function ToolRouter() {
-	const { toolName } = useMcpState();
+  const { toolName } = useMcpState();
 
-	if (!toolName) {
-		return (
-			<div className="flex items-center justify-center min-h-dvh p-6">
-				<div className="flex items-center gap-3 text-muted-foreground">
-					<span className="w-4 h-4 border-2 border-muted border-t-primary rounded-full animate-spin" />
-					<span className="text-sm">Connecting to host...</span>
-				</div>
-			</div>
-		);
-	}
+  if (!toolName) {
+    return (
+      <div className="flex justify-center items-center p-6 min-h-dvh">
+        <div className="flex items-center gap-3 text-muted-foreground">
+          <span className="border-2 border-muted border-t-primary rounded-full w-4 h-4 animate-spin" />
+          <span className="text-sm">Connecting to host...</span>
+        </div>
+      </div>
+    );
+  }
 
-	const Page = TOOL_PAGES[toolName];
+  const Page = TOOL_PAGES[toolName];
 
-	if (!Page) {
-		return (
-			<div className="flex items-center justify-center min-h-dvh p-6">
-				<p className="text-sm text-destructive">Unknown tool: {toolName}</p>
-			</div>
-		);
-	}
+  if (!Page) {
+    return (
+      <div className="flex justify-center items-center p-6 min-h-dvh">
+        <p className="text-destructive text-sm">Unknown tool: {toolName}</p>
+      </div>
+    );
+  }
 
-	return <Page />;
+  return <Page />;
 }
 
 const rootRoute = createRootRoute({ component: RootLayout });
 
 const indexRoute = createRoute({
-	getParentRoute: () => rootRoute,
-	path: "/",
-	component: ToolRouter,
+  getParentRoute: () => rootRoute,
+  path: "/",
+  component: ToolRouter,
 });
 
 const routeTree = rootRoute.addChildren([indexRoute]);
 
 const router = createRouter({
-	routeTree,
-	history: createHashHistory(),
+  routeTree,
+  history: createHashHistory(),
 });
 
 export function AppRouter() {
-	return <RouterProvider router={router} />;
+  return <RouterProvider router={router} />;
 }
 
 function RootLayout() {
-	const hostContext = useMcpHostContext();
-	const insets = hostContext?.safeAreaInsets;
+  const hostContext = useMcpHostContext();
+  const insets = hostContext?.safeAreaInsets;
 
-	return (
-		<div
-			style={
-				insets
-					? {
-							paddingTop: `${insets.top}px`,
-							paddingRight: `${insets.right}px`,
-							paddingBottom: `${insets.bottom}px`,
-							paddingLeft: `${insets.left}px`,
-						}
-					: undefined
-			}
-		>
-			<Outlet />
-		</div>
-	);
+  return (
+    <div
+      style={
+        insets
+          ? {
+              paddingTop: `${insets.top}px`,
+              paddingRight: `${insets.right}px`,
+              paddingBottom: `${insets.bottom}px`,
+              paddingLeft: `${insets.left}px`,
+            }
+          : undefined
+      }
+    >
+      <Outlet />
+    </div>
+  );
 }

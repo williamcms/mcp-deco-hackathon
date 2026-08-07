@@ -92,3 +92,20 @@ export function createCombinationFormatters(): CombinationFormatters {
     decimal: new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 }),
   };
 }
+
+export interface BundleFormatters {
+  money: Intl.NumberFormat;
+  int: Intl.NumberFormat;
+}
+
+/** Conjunto de formatadores usado na tela de criação de bundle. */
+export function createBundleFormatters(currency: string): BundleFormatters {
+  return {
+    money: new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency: currency || "BRL",
+      maximumFractionDigits: 2,
+    }),
+    int: new Intl.NumberFormat("pt-BR"),
+  };
+}

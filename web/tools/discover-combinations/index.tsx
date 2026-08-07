@@ -29,6 +29,7 @@ import {
   Users,
 } from "lucide-react";
 import { type ReactNode, useState } from "react";
+import type { CreateBundleOutput } from "../../../api/tools/create-bundle.ts";
 import type {
   DiscoverCombinationsInput,
   DiscoverCombinationsOutput,
@@ -392,12 +393,14 @@ function CombinationsTable({
   combinations,
   formatters,
   context,
-  onExplain,
+  onAskHost,
+  onCreateBundle,
 }: {
   combinations: Combination[];
   formatters: CombinationFormatters;
   context: ExplainContext;
-  onExplain: (prompt: string) => void;
+  onAskHost: (prompt: string) => void;
+  onCreateBundle: (combination: Combination) => void;
 }) {
   if (combinations.length === 0) {
     return <Empty>Nenhuma combinação passou dos cortes. Os avisos no fim da página dizem o porquê.</Empty>;
@@ -475,7 +478,13 @@ function CombinationsTable({
                       label: "Explicar",
                       description: "Por que saem juntos e o que explorar",
                       icon: <Sparkles className="size-4" />,
-                      onSelect: () => onExplain(buildExplainPrompt(combination, context)),
+                      onSelect: () => onAskHost(buildExplainPrompt(combination, context)),
+                    },
+                    {
+                      label: "Montar bundle",
+                      description: "Simula um kit na Shopify com estes produtos",
+                      icon: <Package className="size-4" />,
+                      onSelect: () => onCreateBundle(combination),
                     },
                   ]}
                 />
@@ -701,6 +710,112 @@ function Spinner({ label }: { label: string }) {
   );
 }
 
+/**
+ * Resultado de create_bundle mostrado inline, já que a tool não tem UI
+ * própria. Simulação (dryRun) mostra o botão de publicar; depois de criado,
+ * só o link pro admin.
+ */
+function BundlePreview({
+  title,
+  result,
+  busy,
+  onPublish,
+  onDismiss,
+}: {
+  title: string;
+  result: CreateBundleOutput;
+  busy: boolean;
+  onPublish: () => void;
+  onDismiss: () => void;
+}) {
+  const isCreated = result.mode === "created";
+  const money = new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: result.pricing.currency || "BRL",
+    maximumFractionDigits: 2,
+  });
+  const componentNames = result.components.map((component) => component.title).join(" + ");
+
+  return (
+    <Card>
+      <Row
+        first
+        icon={<Package className="size-4" />}
+        title={
+          <span className="flex items-center gap-2">
+            {title}
+            <Badge
+              variant="secondary"
+              className={isCreated ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" : undefined}
+            >
+              {isCreated ? "Criado" : "Simulação"}
+            </Badge>
+          </span>
+        }
+        description={componentNames}
+        right={
+          isCreated ? (
+            <SmallButton variant="ghost" onClick={onDismiss}>
+              Fechar
+            </SmallButton>
+          ) : (
+            <div className="flex items-center gap-1.5">
+              <SmallButton variant="ghost" onClick={onDismiss} disabled={busy}>
+                Cancelar
+              </SmallButton>
+              <SmallButton onClick={onPublish} disabled={busy}>
+                {busy ? "Criando..." : "Criar bundle na Shopify"}
+              </SmallButton>
+            </div>
+          )
+        }
+      />
+      <Row
+        icon={<Coins className="size-4" />}
+        title={`Preço do kit: ${money.format(result.pricing.bundlePrice)}`}
+        description={
+          result.pricing.marginPerBundle != null
+            ? `Economia ${money.format(result.pricing.savings)} · Margem ${money.format(result.pricing.marginPerBundle)} (${formatPercentage(result.pricing.marginPct ?? 0)})`
+            : `Economia ${money.format(result.pricing.savings)} · Falta custo unitário cadastrado para calcular margem.`
+        }
+      />
+      <Row
+        icon={<Layers className="size-4" />}
+        title={`Viabilidade de estoque: ${INVENTORY_VIABILITY_LABELS[result.inventory.level]}`}
+        description={
+          result.inventory.maxBundles != null
+            ? `O estoque atual monta ${result.inventory.maxBundles} ${result.inventory.maxBundles === 1 ? "kit" : "kits"}.`
+            : "Algum componente está sem estoque informado."
+        }
+      />
+      {isCreated && result.bundle ? (
+        <Row
+          icon={<ArrowRight className="size-4" />}
+          title="Bundle publicado no admin"
+          description={result.bundle.adminUrl}
+          right={
+            <a
+              href={result.bundle.adminUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 text-xs underline underline-offset-2"
+            >
+              Abrir
+            </a>
+          }
+        />
+      ) : null}
+      {result.warnings.map((warning) => (
+        <Row
+          key={warning}
+          icon={<AlertTriangle className="size-4 text-amber-600 dark:text-amber-400" />}
+          title={<span className="font-normal text-muted-foreground">{warning}</span>}
+        />
+      ))}
+    </Card>
+  );
+}
+
 export default function DiscoverCombinationsPage() {
   const state = useMcpState<DiscoverCombinationsInput, DiscoverCombinationsOutput>();
   const app = useMcpApp();
@@ -713,6 +828,18 @@ export default function DiscoverCombinationsPage() {
   const [override, setOverride] = useState<DiscoverCombinationsOutput | null>(null);
   const [runningDays, setRunningDays] = useState<number | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
+
+  // Prévia do bundle aberta pela ação "Montar bundle" de uma combinação.
+  // create_bundle não tem UI própria: o resultado vem direto pra cá. Guarda
+  // os componentes junto (não só o resultado) para o botão de publicar poder
+  // rechamar com dryRun: false sem depender da combinação original.
+  const [bundlePreview, setBundlePreview] = useState<{
+    title: string;
+    components: Array<{ productId: string }>;
+    result: CreateBundleOutput;
+  } | null>(null);
+  const [bundleBusy, setBundleBusy] = useState<"simulate" | "publish" | null>(null);
+  const [bundleError, setBundleError] = useState<string | null>(null);
 
   /**
    * Chama a tool direto no servidor que serve esta app.
@@ -747,6 +874,45 @@ export default function DiscoverCombinationsPage() {
     } finally {
       setRunningDays(null);
     }
+  }
+
+  /**
+   * Chama create_bundle direto no servidor, sem passar pelo chat — mesma
+   * razão do runFor acima. create_bundle não tem UI própria (_meta.ui), então
+   * o resultado é tratado aqui mesmo, como uma prévia dentro desta tela.
+   */
+  async function runCreateBundle(title: string, components: Array<{ productId: string }>, dryRun: boolean) {
+    if (!app || bundleBusy) return;
+
+    setBundleBusy(dryRun ? "simulate" : "publish");
+    setBundleError(null);
+
+    try {
+      const response = await app.callServerTool({
+        name: "create_bundle",
+        arguments: { components, dryRun },
+      });
+
+      if (response.isError) throw new Error(extractToolErrorText(response));
+
+      const structured = response.structuredContent as CreateBundleOutput | undefined;
+      if (!structured) {
+        throw new Error("A tool respondeu sem conteúdo estruturado.");
+      }
+
+      setBundlePreview({ title, components, result: structured });
+    } catch (error) {
+      setBundleError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBundleBusy(null);
+    }
+  }
+
+  function startBundlePreview(combination: Combination) {
+    const components = combination.products.map((product) => ({
+      productId: product.id,
+    }));
+    runCreateBundle(combinationTitle(combination), components, true);
   }
 
   function askHost(prompt: string) {
@@ -893,7 +1059,7 @@ export default function DiscoverCombinationsPage() {
 
       <Section
         title="Combinações rankeadas"
-        description="Produtos que saem juntos no mesmo pedido, ordenados pelo score. Passe o mouse em qualquer número para entender o que ele significa, ou use o menu da linha para pedir uma explicação."
+        description="Produtos que saem juntos no mesmo pedido, ordenados pelo score. Passe o mouse em qualquer número para entender o que ele significa, ou use o menu da linha para pedir uma explicação ou montar um bundle."
       >
         <Card>
           <CombinationsTable
@@ -904,10 +1070,30 @@ export default function DiscoverCombinationsPage() {
               ordersAnalyzed: summary.ordersAnalyzed,
               campaignDays: period.campaignDays,
             }}
-            onExplain={askHost}
+            onAskHost={askHost}
+            onCreateBundle={startBundlePreview}
           />
         </Card>
       </Section>
+
+      {bundleError || bundlePreview ? (
+        <Section title="Montar bundle">
+          {bundleError ? (
+            <Alert icon={<AlertTriangle className="size-4" />} tone="danger">
+              {bundleError}
+            </Alert>
+          ) : null}
+          {bundlePreview ? (
+            <BundlePreview
+              title={bundlePreview.title}
+              result={bundlePreview.result}
+              busy={bundleBusy !== null}
+              onPublish={() => runCreateBundle(bundlePreview.title, bundlePreview.components, false)}
+              onDismiss={() => setBundlePreview(null)}
+            />
+          ) : null}
+        </Section>
+      ) : null}
 
       <Section
         title="Como o score é calculado"
