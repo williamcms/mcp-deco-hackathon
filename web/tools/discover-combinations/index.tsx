@@ -2,7 +2,9 @@ import type { CreateBundleOutput } from "@/api/tools/create-bundle.ts";
 import type { DiscoverCombinationsInput, DiscoverCombinationsOutput } from "@/api/tools/discover-combinations.ts";
 import { ErrorScreen } from "@/web/components/error-screen.tsx";
 import { Badge } from "@/web/components/ui/badge.tsx";
+import { ChartContainer } from "@/web/components/ui/chart.tsx";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/web/components/ui/table.tsx";
+import { Tabs, TabsContent } from "@/web/components/ui/tabs.tsx";
 import { useMcpApp, useMcpHostContext, useMcpState } from "@/web/context.tsx";
 import { cn } from "@/web/lib/utils.ts";
 import { buildExplainPrompt, combinationTitle } from "@/web/tools/discover-combinations/explain-prompt.ts";
@@ -18,8 +20,11 @@ import {
 import {
   type CombinationFormatters,
   createCombinationFormatters,
+  createSalesFormatters,
   formatLiftMultiplier,
+  formatOptionalPercentage,
   formatPercentage,
+  formatShortDate,
 } from "@/web/utils/formatters.ts";
 import { extractToolErrorText } from "@/web/utils/mcp-tool-result.ts";
 import {
@@ -32,11 +37,14 @@ import {
   Layers,
   MoreHorizontal,
   Package,
+  Percent,
+  Receipt,
   Sparkles,
   TrendingUp,
   Users,
 } from "lucide-react";
-import { Fragment, type ReactNode, useState } from "react";
+import { Fragment, type ReactNode, useEffect, useRef, useState } from "react";
+import { Area, AreaChart, CartesianGrid, Tooltip, XAxis, YAxis } from "recharts";
 
 type Combination = DiscoverCombinationsOutput["combinations"][number];
 type Rule = DiscoverCombinationsOutput["rules"][number];
@@ -44,6 +52,12 @@ type Sequence = DiscoverCombinationsOutput["sequences"][number];
 
 const PERIODS = [7, 30, 60] as const;
 const TOOL_NAME = "discover_combinations";
+
+const PAGE_TAB_OPTIONS: Array<{ key: string; label: string }> = [
+  { key: "combinations", label: "Combinações" },
+  { key: "rules", label: "Regras & sequências" },
+  { key: "sales", label: "Vendas" },
+];
 
 type SortKey = "score" | "ticket" | "occurrences";
 
@@ -203,6 +217,68 @@ function SmallButton({
   );
 }
 
+interface TabOption {
+  key: string;
+  label: string;
+}
+
+/**
+ * Floating pill nav with a sliding indicator, instead of Radix's TabsList
+ * (each trigger toggling its own background, which reads as a row of
+ * buttons rather than actual tabs). Only drives `Tabs`' `value` — the
+ * panel-switching itself still comes from `Tabs`/`TabsContent`.
+ */
+function FloatingTabNav({
+  value,
+  onChange,
+  options,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  options: TabOption[];
+}) {
+  const triggerRefs = useRef(new Map<string, HTMLButtonElement>());
+  const [indicator, setIndicator] = useState<{ left: number; width: number } | null>(null);
+
+  useEffect(() => {
+    const trigger = triggerRefs.current.get(value);
+    if (trigger) setIndicator({ left: trigger.offsetLeft, width: trigger.offsetWidth });
+  }, [value]);
+
+  return (
+    <div
+      role="tablist"
+      className="bottom-6 left-1/2 z-3 fixed flex items-center gap-1 p-1 rounded-full -translate-x-1/2 floating-surface"
+    >
+      {indicator ? (
+        <span
+          aria-hidden="true"
+          className="top-1 bottom-1 absolute bg-primary rounded-full transition-[transform,width] duration-200 ease-out"
+          style={{ width: indicator.width, transform: `translateX(${indicator.left}px)` }}
+        />
+      ) : null}
+      {options.map((option) => (
+        <button
+          key={option.key}
+          ref={(el) => {
+            if (el) triggerRefs.current.set(option.key, el);
+          }}
+          type="button"
+          role="tab"
+          aria-selected={value === option.key}
+          onClick={() => onChange(option.key)}
+          className={cn(
+            "z-1 relative px-3.5 py-1.5 rounded-full font-medium text-sm whitespace-nowrap transition-colors",
+            value === option.key ? "text-primary-foreground" : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 /** Help icon that opens the metric's explanation. */
 function InfoTip({ metric, content }: { metric?: MetricKey; content?: ReactNode }) {
   const body =
@@ -234,7 +310,7 @@ function HeadWithTip({ metric, align = "left" }: { metric: MetricKey; align?: "l
 // Data cells
 // ---------------------------------------------------------------------------
 
-function MetricCard({ icon, label, value, hint }: { icon: ReactNode; label: string; value: string; hint: string }) {
+function MetricCard({ icon, label, value, hint }: { icon: ReactNode; label: string; value: string; hint?: string }) {
   return (
     <Card className="gap-2 p-4">
       <div className="flex items-center gap-2 text-muted-foreground">
@@ -242,7 +318,7 @@ function MetricCard({ icon, label, value, hint }: { icon: ReactNode; label: stri
         <span className="font-medium text-xs uppercase tracking-wide">{label}</span>
       </div>
       <p className="font-semibold tabular-nums text-2xl leading-none">{value}</p>
-      <p className="text-muted-foreground text-xs leading-relaxed">{hint}</p>
+      {hint ? <p className="text-muted-foreground text-xs leading-relaxed">{hint}</p> : null}
     </Card>
   );
 }
@@ -778,6 +854,203 @@ function SequencesTable({ sequences, formatters }: { sequences: Sequence[]; form
 }
 
 // ---------------------------------------------------------------------------
+// Sales
+// ---------------------------------------------------------------------------
+
+type SalesData = DiscoverCombinationsOutput["sales"];
+type RecentOrder = DiscoverCombinationsOutput["recentOrders"][number];
+type SalesFormatterSet = ReturnType<typeof createSalesFormatters>;
+
+interface TipRow {
+  label: string;
+  value: string;
+  color?: string;
+}
+
+/** Custom tooltip: category names carry spaces/accents the shadcn ChartTooltip would mangle into CSS var names. */
+function ChartTip({ active, title, rows }: { active?: boolean; title?: string; rows: TipRow[] }) {
+  if (!active || rows.length === 0) return null;
+  return (
+    <div className="gap-1.5 grid bg-background shadow-xl px-2.5 py-1.5 border border-border/50 rounded-lg min-w-36 text-xs">
+      {title ? <div className="font-medium">{title}</div> : null}
+      {rows.map((row) => (
+        <div key={row.label} className="flex justify-between items-center gap-3">
+          <span className="flex items-center gap-1.5 text-muted-foreground">
+            {row.color ? <span className="rounded-xs size-2 shrink-0" style={{ backgroundColor: row.color }} /> : null}
+            {row.label}
+          </span>
+          <span className="font-mono font-medium tabular-nums">{row.value}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SalesKpis({ sales, formatters }: { sales: SalesData; formatters: SalesFormatterSet }) {
+  const { summary } = sales;
+  const { money, moneyCompact, int } = formatters;
+
+  return (
+    <div className="gap-3 grid grid-cols-2 lg:grid-cols-5">
+      <MetricCard
+        icon={<Coins className="size-3.5" />}
+        label="Receita líquida"
+        value={money.format(summary.revenue)}
+        hint={`bruto ${moneyCompact.format(summary.grossRevenue)}`}
+      />
+      <MetricCard icon={<Layers className="size-3.5" />} label="Pedidos" value={int.format(summary.orders)} />
+      <MetricCard
+        icon={<Receipt className="size-3.5" />}
+        label="Ticket médio"
+        value={money.format(summary.avgTicket)}
+        hint={`${int.format(summary.units)} un. vendidas`}
+      />
+      <MetricCard
+        icon={<Percent className="size-3.5" />}
+        label="Desconto"
+        value={money.format(summary.discount)}
+        hint={`${formatOptionalPercentage(summary.discountPct)} do bruto`}
+      />
+      <MetricCard
+        icon={<TrendingUp className="size-3.5" />}
+        label="Margem"
+        value={formatOptionalPercentage(summary.marginPct)}
+        hint={
+          summary.costCoverage >= 100
+            ? money.format(summary.margin)
+            : `cobre ${formatOptionalPercentage(summary.costCoverage)} da receita`
+        }
+      />
+    </div>
+  );
+}
+
+type ChartView = "all" | "bundles";
+
+const CHART_VIEW_OPTIONS: Array<{ key: ChartView; label: string }> = [
+  { key: "all", label: "Todas" },
+  { key: "bundles", label: "Bundles" },
+];
+
+function RevenueByDayChart({ data, formatters }: { data: SalesData["byDay"]; formatters: SalesFormatterSet }) {
+  const { money, moneyCompact, int } = formatters;
+
+  return (
+    <ChartContainer config={{}} className="w-full h-60 aspect-auto">
+      <AreaChart data={data} margin={{ left: 4, right: 8, top: 8 }}>
+        <defs>
+          <linearGradient id="revenueFill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="var(--color-chart-1)" stopOpacity={0.35} />
+            <stop offset="100%" stopColor="var(--color-chart-1)" stopOpacity={0.02} />
+          </linearGradient>
+        </defs>
+        <CartesianGrid vertical={false} strokeDasharray="3 3" />
+        <XAxis dataKey="date" tickFormatter={formatShortDate} tickLine={false} axisLine={false} minTickGap={24} />
+        <YAxis
+          tickFormatter={(value: number) => moneyCompact.format(value)}
+          tickLine={false}
+          axisLine={false}
+          width={64}
+        />
+        <Tooltip
+          cursor={{ stroke: "var(--color-border)" }}
+          content={({ active, payload }) => {
+            const point = payload?.[0]?.payload as SalesData["byDay"][number] | undefined;
+            if (!point) return null;
+            return (
+              <ChartTip
+                active={active}
+                title={formatShortDate(point.date)}
+                rows={[
+                  { label: "Receita", value: money.format(point.revenue), color: "var(--color-chart-1)" },
+                  { label: "Pedidos", value: int.format(point.orders) },
+                  { label: "Unidades", value: int.format(point.units) },
+                ]}
+              />
+            );
+          }}
+        />
+        <Area
+          type="monotone"
+          dataKey="revenue"
+          stroke="var(--color-chart-1)"
+          strokeWidth={2}
+          fill="url(#revenueFill)"
+        />
+      </AreaChart>
+    </ChartContainer>
+  );
+}
+
+function RecentOrdersList({ orders, formatters }: { orders: RecentOrder[]; formatters: SalesFormatterSet }) {
+  if (orders.length === 0) {
+    return <Empty>Nenhum pedido no período.</Empty>;
+  }
+
+  return (
+    <Card>
+      {orders.map((order, index) => (
+        <Row
+          key={order.orderId}
+          first={index === 0}
+          title={order.orderName}
+          description={<ProductChips products={order.items} />}
+          right={
+            <div className="text-right">
+              <div className="text-muted-foreground text-xs">
+                {new Date(order.createdAt).toLocaleDateString("pt-BR")}
+              </div>
+              <div className="font-medium tabular-nums text-sm">{formatters.money.format(order.total)}</div>
+              <div className="text-muted-foreground text-xs">
+                {order.itemCount} {order.itemCount === 1 ? "item" : "itens"}
+              </div>
+            </div>
+          }
+        />
+      ))}
+    </Card>
+  );
+}
+
+/** Everything the "Vendas" tab shows — owns its own chart-view toggle, nothing else needs it. */
+function SalesSection({ sales, recentOrders }: { sales: SalesData; recentOrders: RecentOrder[] }) {
+  const [chartView, setChartView] = useState<ChartView>("all");
+  const formatters = createSalesFormatters(sales.currency);
+
+  return (
+    <div className="flex flex-col gap-10">
+      <Section>
+        <SalesKpis sales={sales} formatters={formatters} />
+      </Section>
+
+      <Section
+        title="Receita por dia"
+        description={
+          chartView === "bundles" ? "Só os pedidos que incluem algum produto criado como bundle." : undefined
+        }
+        right={
+          <div className="flex items-center gap-1.5">
+            {CHART_VIEW_OPTIONS.map((option) => (
+              <SmallButton key={option.key} active={chartView === option.key} onClick={() => setChartView(option.key)}>
+                {option.label}
+              </SmallButton>
+            ))}
+          </div>
+        }
+      >
+        <Card className="p-4">
+          <RevenueByDayChart data={chartView === "all" ? sales.byDay : sales.byDayBundles} formatters={formatters} />
+        </Card>
+      </Section>
+
+      <Section title="Pedidos recentes" description="Os últimos pedidos do período, não os de maior valor.">
+        <RecentOrdersList orders={recentOrders} formatters={formatters} />
+      </Section>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Score explanation and glossary
 // ---------------------------------------------------------------------------
 
@@ -1011,6 +1284,7 @@ export default function DiscoverCombinationsPage() {
 
   const [sortBy, setSortBy] = useState<SortKey>("score");
   const [glossaryOpen, setGlossaryOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState("combinations");
 
   /**
    * Calls the tool directly on the server that serves this app.
@@ -1152,7 +1426,7 @@ export default function DiscoverCombinationsPage() {
     );
   }
 
-  const { summary, thresholds, period } = result;
+  const { summary, period } = result;
 
   const totalIncremental = result.combinations.reduce(
     (total, combination) => total + (combination.economics.incrementalMargin ?? 0),
@@ -1188,15 +1462,6 @@ export default function DiscoverCombinationsPage() {
         </Alert>
       ) : null}
 
-      <Alert icon={<Layers className="size-4" />}>
-        {formatters.int.format(summary.ordersAnalyzed)} pedidos dos últimos {period.days} dias, minerados com{" "}
-        <b className="text-foreground">{result.engine}</b>. Uma combinação só entra se aparecer em pelo menos{" "}
-        <b className="text-foreground">
-          {thresholds.minSupportCount} {thresholds.minSupportCount === 1 ? "pedido" : "pedidos"}
-        </b>
-        , e o estoque é medido contra uma campanha de {period.campaignDays} dias.
-      </Alert>
-
       <Section>
         <div className="gap-3 grid grid-cols-2 lg:grid-cols-4">
           <MetricCard
@@ -1230,70 +1495,86 @@ export default function DiscoverCombinationsPage() {
         </div>
       </Section>
 
-      <Section
-        title="Combinações rankeadas"
-        description="Produtos que saem juntos no mesmo pedido. Passe o mouse em qualquer número para entender o que ele significa, ou use o menu da linha para pedir uma explicação ou montar um bundle."
-        right={
-          <div className="flex items-center gap-1.5">
-            {SORT_OPTIONS.map((option) => (
-              <SmallButton key={option.key} active={sortBy === option.key} onClick={() => setSortBy(option.key)}>
-                {option.label}
-              </SmallButton>
-            ))}
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <FloatingTabNav value={activeTab} onChange={setActiveTab} options={PAGE_TAB_OPTIONS} />
+
+        <TabsContent value="combinations">
+          <div className="flex flex-col gap-10">
+            <Section
+              title="Combinações rankeadas"
+              description="Produtos que saem juntos no mesmo pedido. Passe o mouse em qualquer número para entender o que ele significa, ou use o menu da linha para pedir uma explicação ou montar um bundle."
+              right={
+                <div className="flex items-center gap-1.5">
+                  {SORT_OPTIONS.map((option) => (
+                    <SmallButton key={option.key} active={sortBy === option.key} onClick={() => setSortBy(option.key)}>
+                      {option.label}
+                    </SmallButton>
+                  ))}
+                </div>
+              }
+            >
+              <Card>
+                <CombinationsTable
+                  combinations={[...result.combinations].sort((a, b) => compareCombinations(a, b, sortBy))}
+                  formatters={formatters}
+                  context={{
+                    periodDays: period.days,
+                    ordersAnalyzed: summary.ordersAnalyzed,
+                    campaignDays: period.campaignDays,
+                  }}
+                  onAskHost={askHost}
+                  onCreateBundle={startBundlePreview}
+                />
+              </Card>
+            </Section>
+
+            {bundleError || bundlePreview ? (
+              <Section title="Montar bundle">
+                {bundleError ? (
+                  <Alert icon={<AlertTriangle className="size-4" />} tone="danger">
+                    {bundleError}
+                  </Alert>
+                ) : null}
+                {bundlePreview ? (
+                  <BundlePreview
+                    title={bundlePreview.title}
+                    result={bundlePreview.result}
+                    busy={bundleBusy !== null}
+                    onPublish={() => runCreateBundle(bundlePreview.title, bundlePreview.components, false)}
+                    onDismiss={() => setBundlePreview(null)}
+                  />
+                ) : null}
+              </Section>
+            ) : null}
           </div>
-        }
-      >
-        <Card>
-          <CombinationsTable
-            combinations={[...result.combinations].sort((a, b) => compareCombinations(a, b, sortBy))}
-            formatters={formatters}
-            context={{
-              periodDays: period.days,
-              ordersAnalyzed: summary.ordersAnalyzed,
-              campaignDays: period.campaignDays,
-            }}
-            onAskHost={askHost}
-            onCreateBundle={startBundlePreview}
-          />
-        </Card>
-      </Section>
+        </TabsContent>
 
-      {bundleError || bundlePreview ? (
-        <Section title="Montar bundle">
-          {bundleError ? (
-            <Alert icon={<AlertTriangle className="size-4" />} tone="danger">
-              {bundleError}
-            </Alert>
-          ) : null}
-          {bundlePreview ? (
-            <BundlePreview
-              title={bundlePreview.title}
-              result={bundlePreview.result}
-              busy={bundleBusy !== null}
-              onPublish={() => runCreateBundle(bundlePreview.title, bundlePreview.components, false)}
-              onDismiss={() => setBundlePreview(null)}
-            />
-          ) : null}
-        </Section>
-      ) : null}
+        <TabsContent value="rules">
+          <div className="flex flex-col gap-10">
+            <Section
+              title="Regras de associação"
+              description="A leitura direcional das combinações, dentro do mesmo pedido. Quem leva o produto da esquerda tende a levar o da direita."
+            >
+              <Card>
+                <RulesTable rules={result.rules} formatters={formatters} />
+              </Card>
+            </Section>
 
-      <Section
-        title="Regras de associação"
-        description="A leitura direcional das combinações, dentro do mesmo pedido. Quem leva o produto da esquerda tende a levar o da direita."
-      >
-        <Card>
-          <RulesTable rules={result.rules} formatters={formatters} />
-        </Card>
-      </Section>
+            <Section
+              title="Sequência de compra"
+              description="O que o cliente volta para comprar em um pedido seguinte, e quanto tempo costuma levar. É gatilho de recompra, não kit."
+            >
+              <Card>
+                <SequencesTable sequences={result.sequences} formatters={formatters} />
+              </Card>
+            </Section>
+          </div>
+        </TabsContent>
 
-      <Section
-        title="Sequência de compra"
-        description="O que o cliente volta para comprar em um pedido seguinte, e quanto tempo costuma levar. É gatilho de recompra, não kit."
-      >
-        <Card>
-          <SequencesTable sequences={result.sequences} formatters={formatters} />
-        </Card>
-      </Section>
+        <TabsContent value="sales">
+          <SalesSection sales={result.sales} recentOrders={result.recentOrders} />
+        </TabsContent>
+      </Tabs>
 
       {result.warnings.length > 0 ? (
         <Section

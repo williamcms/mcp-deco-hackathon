@@ -1,6 +1,7 @@
 import { createTool } from "@decocms/runtime/tools";
 import { z } from "zod";
 import { discoverCombinations } from "../analysis/discover.ts";
+import { aggregate, round, toNumber } from "../shopify/aggregate.ts";
 import { resolveCredentials } from "../shopify/client.ts";
 import { fetchOrders, type ShopifyOrder } from "../shopify/orders.ts";
 import type { Env } from "../types/env.ts";
@@ -161,6 +162,42 @@ const sequenceSchema = z.object({
   medianDaysBetween: z.number(),
 });
 
+const salesSummarySchema = z.object({
+  orders: z.number(),
+  units: z.number(),
+  revenue: z.number().describe("Receita líquida (descontos já aplicados)"),
+  grossRevenue: z.number(),
+  discount: z.number(),
+  discountPct: z.number(),
+  avgTicket: z.number(),
+  cost: z.number(),
+  margin: z.number(),
+  marginPct: z.number().nullable().describe("Null: nenhum item com custo cadastrado"),
+  costCoverage: z.number().describe("% da receita com custo unitário cadastrado"),
+});
+
+const salesByDaySchema = z.object({
+  date: z.string(),
+  revenue: z.number(),
+  units: z.number(),
+  orders: z.number(),
+});
+
+const recentOrderSchema = z.object({
+  orderId: z.string(),
+  orderName: z.string(),
+  createdAt: z.string(),
+  itemCount: z.number(),
+  total: z.number(),
+  items: z.array(
+    z.object({
+      id: z.string(),
+      title: z.string(),
+      quantity: z.number(),
+    }),
+  ),
+});
+
 export const discoverCombinationsOutputSchema = z.object({
   period: z.object({
     days: z.number(),
@@ -188,6 +225,13 @@ export const discoverCombinationsOutputSchema = z.object({
   combinations: z.array(combinationSchema),
   rules: z.array(ruleSchema),
   sequences: z.array(sequenceSchema),
+  sales: z.object({
+    currency: z.string(),
+    summary: salesSummarySchema,
+    byDay: z.array(salesByDaySchema).describe("Todas as vendas do período"),
+    byDayBundles: z.array(salesByDaySchema).describe("Só as vendas de produtos criados como bundle (tag 'bundle')"),
+  }),
+  recentOrders: z.array(recentOrderSchema).describe("Os pedidos mais recentes do período, não os de maior valor"),
   warnings: z.array(z.string()),
 });
 
@@ -203,7 +247,7 @@ export const discoverCombinationsTool = (env: Env) =>
   createTool({
     id: "discover_combinations",
     description:
-      "Etapa 2 da descoberta: roda market basket analysis (Apriori ou FP-Growth) sobre os pedidos da Shopify e devolve as combinações de produtos que valem virar campanha. Para cada uma calcula support, confidence, lift, margem incremental (descontado o acaso) e viabilidade de estoque, além de regras de associação A -> B e análise de sequência de compra (o que o cliente volta para comprar e em quantos dias). Use quando precisar decidir quais kits, combos ou cross-sell promover.",
+      "Etapa 2 da descoberta: roda market basket analysis (Apriori ou FP-Growth) sobre os pedidos da Shopify e devolve as combinações de produtos que valem virar campanha. Para cada uma calcula support, confidence, lift, margem incremental (descontado o acaso) e viabilidade de estoque, além de regras de associação A -> B, análise de sequência de compra (o que o cliente volta para comprar e em quantos dias) e uma visão geral de vendas do mesmo período (receita, ticket médio, série diária, receita por categoria e os pedidos mais recentes). Use quando precisar decidir quais kits, combos ou cross-sell promover.",
     inputSchema: discoverCombinationsInputSchema,
     outputSchema: discoverCombinationsOutputSchema,
     _meta: { ui: { resourceUri: DISCOVER_COMBINATIONS_RESOURCE_URI } },
@@ -258,6 +302,23 @@ export const discoverCombinationsTool = (env: Env) =>
         );
       }
 
+      // Same orders already collected for mining — no new call to Shopify.
+      const aggregateOptions = {
+        periodDays,
+        from,
+        to,
+        includeCancelled: context.includeCancelled ?? false,
+        maxItems: 0,
+        truncated: collected.truncated,
+        ordersWithTruncatedItems: collected.ordersWithTruncatedItems,
+      };
+      const sales = aggregate(collected.orders, aggregateOptions);
+      const bundleSales = aggregate(collected.orders, {
+        ...aggregateOptions,
+        productFilter: (product) => product?.tags.includes("bundle") ?? false,
+      });
+      const recentOrders = buildRecentOrders(collected.orders, context.includeCancelled ?? false, RECENT_ORDERS_LIMIT);
+
       return {
         period: {
           days: periodDays,
@@ -285,10 +346,63 @@ export const discoverCombinationsTool = (env: Env) =>
         combinations: result.combinations,
         rules: result.rules,
         sequences: result.sequences,
+        sales: {
+          currency: sales.currency,
+          summary: sales.summary,
+          byDay: sales.byDay,
+          byDayBundles: bundleSales.byDay,
+        },
+        recentOrders,
         warnings,
       };
     },
   });
+
+/** Not the sales dashboard's top-value items — just the newest orders, for a quick glance. */
+const RECENT_ORDERS_LIMIT = 8;
+
+interface RecentOrder {
+  orderId: string;
+  orderName: string;
+  createdAt: string;
+  itemCount: number;
+  total: number;
+  items: Array<{ id: string; title: string; quantity: number }>;
+}
+
+function buildRecentOrders(orders: ShopifyOrder[], includeCancelled: boolean, limit: number): RecentOrder[] {
+  const rows = orders
+    .filter((order) => includeCancelled || !order.cancelledAt)
+    .map((order) => {
+      let total = 0;
+      let itemCount = 0;
+      const items: RecentOrder["items"] = [];
+      for (const line of order.lineItems.nodes) {
+        const original = toNumber(line.originalTotalSet?.shopMoney.amount);
+        const lineDiscount = toNumber(line.totalDiscountSet?.shopMoney.amount);
+        const paid = line.discountedTotalSet
+          ? toNumber(line.discountedTotalSet.shopMoney.amount)
+          : original - lineDiscount;
+        total += paid;
+        itemCount += line.quantity;
+        items.push({
+          id: line.product?.id ?? line.id,
+          title: line.product?.title ?? line.title,
+          quantity: line.quantity,
+        });
+      }
+      return {
+        orderId: order.id,
+        orderName: order.name,
+        createdAt: order.createdAt,
+        itemCount,
+        total: round(total),
+        items,
+      };
+    });
+
+  return rows.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)).slice(0, limit);
+}
 
 interface CollectResult {
   orders: ShopifyOrder[];
@@ -299,12 +413,14 @@ interface CollectResult {
 }
 
 /**
- * Busca os pedidos, pedindo o cliente só quando a sequência foi solicitada.
+ * Fetches orders, asking for the customer only when sequence analysis was
+ * requested.
  *
- * O campo `customer` exige read_customers, escopo que muitas instalações não
- * têm. Em vez de exigir de todo mundo um escopo que só uma das análises usa,
- * tenta com ele e cai para a coleta sem cliente — o resto do relatório sai
- * igual, e o aviso diz o que foi perdido.
+ * The `customer` field requires read_customers, a scope many installs don't
+ * have. Instead of requiring a scope only one of the analyses uses from
+ * everyone, it tries with it and falls back to collecting without the
+ * customer — the rest of the report comes out the same, and the warning
+ * says what was lost.
  */
 async function collectOrders(
   credentials: Parameters<typeof fetchOrders>[0],
