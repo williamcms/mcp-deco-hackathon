@@ -175,7 +175,7 @@ export const createBundleTool = (env: Env) =>
   createTool({
     id: "create_bundle",
     description:
-      'Ação interna, sem UI própria: transforma uma combinação em um bundle de verdade na Shopify (productBundleCreate), com estoque derivado dos componentes. Por padrão apenas SIMULA (dryRun = true): devolve preço do kit, economia, margem, cenários de desconto e quantos kits o estoque sustenta, sem escrever nada. Chame de novo com dryRun = false para criar o produto, aplicar o preço e definir o status. Acionada pela ação "Montar bundle" na tela de discover_combinations — não chame diretamente pelo chat sem antes ter os produtos de uma combinação em mãos. Precisa dos escopos write_products, read_products e read_inventory, e de uma loja com o recurso de bundles habilitado. Bundles criados aparecem na tool list_bundles.',
+      'Ação interna, sem UI própria: transforma uma combinação em um bundle de verdade na Shopify (productBundleCreate), com estoque derivado dos componentes. Por padrão apenas SIMULA (dryRun = true): devolve preço do kit, economia, margem, cenários de desconto e quantos kits o estoque sustenta, sem escrever nada. Chame de novo com dryRun = false para criar o produto, aplicar o preço e definir o status. Acionada pela ação "Montar bundle" na tela de discover_combinations — não chame diretamente pelo chat sem antes ter os produtos de uma combinação em mãos. Precisa dos escopos write_products, read_products e read_inventory, e de uma loja com o recurso de bundles habilitado. Bundles criados aparecem na aba "Bundles" de discover_combinations.',
     inputSchema: createBundleInputSchema,
     outputSchema: createBundleOutputSchema,
     annotations: {

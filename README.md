@@ -29,26 +29,23 @@ bun run dev
 │   │   └── hello.ts            # MCP App resource (serves HTML)
 │   └── types/
 │       └── env.ts              # StateSchema + Env type
-├── web/                        # React UI (MCP App)
-│   ├── tools/                  # One folder per tool UI (folder-based routing)
+├── web/                        # React UI (one unified MCP App bundle)
+│   ├── app.tsx                  # Entry point — renders McpProvider + AppRouter
+│   ├── context.tsx               # McpProvider, useMcpState/useMcpApp/... hooks
+│   ├── router.tsx                # ToolRouter — picks the page by toolName at runtime
+│   ├── tools/                  # One folder per tool UI
 │   │   └── hello/              # hello_world tool UI
-│   │       ├── main.tsx        # React entry point
-│   │       ├── bridge.ts       # MCP App SDK integration
-│   │       ├── context.tsx     # React context for MCP state
-│   │       ├── router.tsx      # TanStack Router with UI
-│   │       └── types.ts        # UI state types
-│   ├── entry.tsx               # Build entry (imports @tool/main.tsx)
+│   │       └── index.tsx       # Default-exported page component, registered in router.tsx
 │   ├── components/ui/          # shadcn/ui components
 │   ├── lib/utils.ts            # cn() helper
 │   └── globals.css             # Tailwind base styles
-├── index.html                  # Single Vite entry (shared by all tools)
+├── index.html                  # Single Vite entry (imports web/app.tsx)
 ├── package.json
 ├── tsconfig.json
 ├── biome.json
 ├── vite.config.ts
 ├── components.json             # shadcn/ui config
-├── app.json                    # Deco mesh config
-└── .mcp.json                   # Local MCP server config
+└── app.json                    # Deco mesh config
 ```
 
 ## Development
@@ -66,40 +63,54 @@ bun run dev:web
 
 ### Connecting to deco Studio
 
-To test your MCP App in deco Studio, expose your local server through a tunnel:
+There are two ways to connect this app to Studio: importing it from GitHub (the regular way to install an app), or pointing Studio at a local tunnel (faster to iterate on while developing).
+
+#### Option A: Import from GitHub
+
+1. Top-left corner of Studio, click the agent selector.
+2. Click **Import**.
+3. Follow the regular import steps from there.
+
+#### Option B: Local tunnel (faster for testing)
+
+Expose your local server through a tunnel:
 
 ```bash
-bun start
-# Tunnel started -> 🌐 Preview: https://<your-id>.deco.host
+bun run start
+# Tunnel started
+#     -> 🌐 Preview: https://<your-id>.deco.host
+#     -> 🔗 MCP URL: https://<your-id>.deco.host/api/mcp
 ```
 
-Then connect in Studio using the MCP URL:
+This runs the `deco` CLI ([`deco-cli`](https://www.npmjs.com/package/deco-cli) on npm, already listed as a devDependency — no global install needed).
 
-```
-https://<your-id>.deco.host/api/mcp
-```
+Then, in Studio:
+
+1. Bottom-left corner, click the gear icon (settings).
+2. Go to **Connections** → **Custom Connection**, and paste the tunnel's MCP URL:
+   ```
+   https://<your-id>.deco.host/api/mcp
+   ```
+3. On the new connection, open the "..." menu → **Select**, and assign it to an agent.
+4. Open that agent from Studio's home screen, go to its settings, and enable the tool's tabs under **Layout → Pinned Views**.
 
 ### Adding a New Tool with UI
 
-Each tool UI lives in `web/tools/<name>/`. The `TOOL` env var tells Vite which folder to build — one build per tool, output as `dist/client/<name>.html`.
+All tool UIs are built into a single `dist/client/index.html` (all CSS/JS inlined via `vite-plugin-singlefile`) — there's no per-tool build step.
 
-1. **Create the tool** — `api/tools/my-tool.ts` using `createTool`
+1. **Create the tool** — `api/tools/my-tool.ts` using `createTool`, with `_meta.ui.resourceUri` pointing at the resource below
 2. **Register it** — add to the `tools` array in `api/tools/index.ts`
-3. **Create the UI** — `web/tools/my-tool/` with `main.tsx`, `bridge.ts`, `context.tsx`, `router.tsx`, `types.ts`
-4. **Create the resource** — `api/resources/my-tool.ts` serving `dist/client/my-tool.html`
-5. **Update build scripts**:
-   ```json
-   "build:web": "TOOL=hello vite build && TOOL=my-tool vite build",
-   "dev:web": "concurrently \"TOOL=hello vite build --watch\" \"TOOL=my-tool vite build --watch\""
-   ```
+3. **Create the UI** — `web/tools/my-tool/index.tsx`, a default-exported page component (it receives no props; it reads tool state via `useMcpState()`)
+4. **Register the page** — add it to `TOOL_PAGES` in `web/router.tsx`, keyed by the tool's `id`
+5. **Create the resource** — `api/resources/my-tool.ts`, serving the same shared `dist/client/index.html` with `mimeType: "text/html;profile=mcp-app"`
 
 ### How the Tool Router Works
 
 ```
-TOOL=hello vite build
-  → resolves @tool/* → web/tools/hello/*
-  → index.html imports web/entry.tsx imports @tool/main.tsx
-  → outputs dist/client/hello.html (single-file bundle)
+vite build
+  → bundles every web/tools/<name>/index.tsx into one dist/client/index.html
+  → at runtime, ToolRouter (web/router.tsx) reads `toolName` from the MCP host context
+  → looks it up in TOOL_PAGES and renders that page component
 ```
 
 ## Tech Stack
@@ -119,7 +130,7 @@ TOOL=hello vite build
 3. **Tools** perform actions and can link to a UI via `_meta.ui.resourceUri`
 4. **Resources** serve single-file HTML bundles with `mimeType: "text/html;profile=mcp-app"`
 5. The **MCP App UI** connects to the host via `@modelcontextprotocol/ext-apps`, receives tool input/results, and renders an interactive display
-6. Vite builds each tool UI into a self-contained HTML file (CSS + JS inlined) using the `TOOL` env var to select which `web/tools/<name>/` folder to bundle
+6. Vite builds every tool UI into a single self-contained HTML file (CSS + JS inlined), switched at runtime by `toolName`
 
 ## Deployment
 
@@ -128,9 +139,11 @@ TOOL=hello vite build
 The app uses a factory pattern that separates business logic (`api/app.ts`) from platform wiring. To deploy to a new platform, add a thin entrypoint file — see the [`add-deploy-target` skill](.claude/skills/add-deploy-target/SKILL.md) for step-by-step instructions.
 
 Supported targets out of the box:
+
 - **Bun** — `api/main.bun.ts` (default, used for local dev)
 
 Easy to add:
+
 - **Cloudflare Workers** — ~5 lines + `wrangler.toml`
 - **Deno** — ~5 lines
 - **Node.js** — ~5 lines + `@hono/node-server`

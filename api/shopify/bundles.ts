@@ -242,6 +242,47 @@ export async function fetchBundleProducts(
   return { shop: data.shop, products: data.products.nodes };
 }
 
+export interface BundleSummary {
+  productId: string;
+  title: string;
+  handle: string;
+  status: "DRAFT" | "ACTIVE";
+  imageUrl: string | null;
+  minPrice: number;
+  maxPrice: number;
+  totalInventory: number | null;
+  adminUrl: string;
+  onlineStoreUrl: string | null;
+}
+
+/** Buckets bundle products by status — draft (awaiting approval) vs. already published. */
+export function summarizeBundles(
+  products: BundleProduct[],
+  shopDomain: string,
+): { draft: BundleSummary[]; active: BundleSummary[] } {
+  const draft: BundleSummary[] = [];
+  const active: BundleSummary[] = [];
+
+  for (const product of products) {
+    const summary: BundleSummary = {
+      productId: product.id,
+      title: product.title,
+      handle: product.handle,
+      status: product.status,
+      imageUrl: product.featuredImage?.url ?? null,
+      minPrice: Number(product.priceRangeV2.minVariantPrice.amount),
+      maxPrice: Number(product.priceRangeV2.maxVariantPrice.amount),
+      totalInventory: product.totalInventory,
+      adminUrl: adminProductUrl(shopDomain, product.id),
+      onlineStoreUrl: product.onlineStoreUrl,
+    };
+    if (product.status === "DRAFT") draft.push(summary);
+    else active.push(summary);
+  }
+
+  return { draft, active };
+}
+
 // ---------------------------------------------------------------------------
 // Criação do bundle
 // ---------------------------------------------------------------------------

@@ -32,6 +32,7 @@ import {
   ArrowRight,
   ChevronRight,
   Coins,
+  ExternalLink,
   HelpCircle,
   Info,
   Layers,
@@ -52,12 +53,6 @@ type Sequence = DiscoverCombinationsOutput["sequences"][number];
 
 const PERIODS = [7, 30, 60] as const;
 const TOOL_NAME = "discover_combinations";
-
-const PAGE_TAB_OPTIONS: Array<{ key: string; label: string }> = [
-  { key: "combinations", label: "Combinações" },
-  { key: "rules", label: "Regras & sequências" },
-  { key: "sales", label: "Vendas" },
-];
 
 type SortKey = "score" | "ticket" | "occurrences";
 
@@ -220,6 +215,8 @@ function SmallButton({
 interface TabOption {
   key: string;
   label: string;
+  /** Small count badge on the trigger — e.g. bundles awaiting approval. Omit or 0 to hide it. */
+  badge?: number;
 }
 
 /**
@@ -273,6 +270,11 @@ function FloatingTabNav({
           )}
         >
           {option.label}
+          {option.badge ? (
+            <span className="-top-1 -right-1 absolute flex justify-center items-center bg-destructive px-1 rounded-full min-w-4 h-4 font-medium text-[10px] text-white">
+              {option.badge}
+            </span>
+          ) : null}
         </button>
       ))}
     </div>
@@ -1051,6 +1053,121 @@ function SalesSection({ sales, recentOrders }: { sales: SalesData; recentOrders:
 }
 
 // ---------------------------------------------------------------------------
+// Bundles
+// ---------------------------------------------------------------------------
+
+type BundlesData = DiscoverCombinationsOutput["bundles"];
+type BundleSummary = BundlesData["draft"][number];
+
+function bundlePriceRange(bundle: BundleSummary, money: Intl.NumberFormat): string {
+  if (bundle.minPrice === bundle.maxPrice) return money.format(bundle.minPrice);
+  return `${money.format(bundle.minPrice)} – ${money.format(bundle.maxPrice)}`;
+}
+
+function BundlesTable({ bundles, money }: { bundles: BundleSummary[]; money: Intl.NumberFormat }) {
+  if (bundles.length === 0) {
+    return <Empty>Nenhum bundle aqui no momento.</Empty>;
+  }
+
+  return (
+    <div className="overflow-x-auto">
+      <Table>
+        <TableHeader>
+          <TableRow className="hover:bg-transparent">
+            <TableHead className="text-xs">Bundle</TableHead>
+            <TableHead className="text-xs text-right">Preço</TableHead>
+            <TableHead className="text-xs text-right">Estoque</TableHead>
+            <TableHead className="w-10" />
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {bundles.map((bundle) => (
+            <TableRow key={bundle.productId}>
+              <TableCell>
+                <div className="flex items-center gap-3 min-w-0">
+                  {bundle.imageUrl ? (
+                    // biome-ignore lint/performance/noImgElement: thumbnail comes straight from Shopify, no host-side optimization
+                    <img src={bundle.imageUrl} alt="" className="bg-muted rounded-md size-9 object-cover shrink-0" />
+                  ) : (
+                    <div className="flex justify-center items-center bg-muted rounded-md size-9 text-muted-foreground shrink-0">
+                      <Package className="size-4" />
+                    </div>
+                  )}
+                  <span className="text-sm truncate" title={bundle.title}>
+                    {bundle.title}
+                  </span>
+                </div>
+              </TableCell>
+              <TableCell className="tabular-nums text-right whitespace-nowrap">
+                {bundlePriceRange(bundle, money)}
+              </TableCell>
+              <TableCell className="tabular-nums text-right">
+                {bundle.totalInventory != null ? (
+                  bundle.totalInventory
+                ) : (
+                  <span className="text-muted-foreground">—</span>
+                )}
+              </TableCell>
+              <TableCell className="text-right">
+                <a
+                  href={bundle.onlineStoreUrl ?? bundle.adminUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 text-xs underline underline-offset-2 whitespace-nowrap"
+                >
+                  Admin
+                  <ExternalLink className="size-3" />
+                </a>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
+
+function BundlesSection({ bundles }: { bundles: BundlesData }) {
+  const money = new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: bundles.currency || "BRL",
+    maximumFractionDigits: 2,
+  });
+
+  return (
+    <div className="flex flex-col gap-10">
+      <Section
+        title="Aguardando aprovação"
+        description='Bundles em rascunho, criados pela ação "Montar bundle", esperando revisão antes de publicar.'
+        right={
+          <Badge variant="secondary" className="tabular-nums">
+            {bundles.draft.length}
+          </Badge>
+        }
+      >
+        <Card>
+          <BundlesTable bundles={bundles.draft} money={money} />
+        </Card>
+      </Section>
+
+      <Section
+        title="Publicados"
+        description="Bundles já ativos na loja."
+        right={
+          <Badge variant="secondary" className="tabular-nums">
+            {bundles.active.length}
+          </Badge>
+        }
+      >
+        <Card>
+          <BundlesTable bundles={bundles.active} money={money} />
+        </Card>
+      </Section>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Score explanation and glossary
 // ---------------------------------------------------------------------------
 
@@ -1435,6 +1552,13 @@ export default function DiscoverCombinationsPage() {
   const best = result.combinations[0];
   const attachRate = summary.ordersAnalyzed > 0 ? (summary.multiItemOrders / summary.ordersAnalyzed) * 100 : 0;
 
+  const tabOptions: TabOption[] = [
+    { key: "combinations", label: "Combinações" },
+    { key: "bundles", label: "Bundles", badge: result.bundles.draft.length },
+    { key: "rules", label: "Regras & sequências" },
+    { key: "sales", label: "Vendas" },
+  ];
+
   return (
     <Page>
       <div className="flex flex-wrap justify-between items-center gap-3">
@@ -1496,7 +1620,7 @@ export default function DiscoverCombinationsPage() {
       </Section>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <FloatingTabNav value={activeTab} onChange={setActiveTab} options={PAGE_TAB_OPTIONS} />
+        <FloatingTabNav value={activeTab} onChange={setActiveTab} options={tabOptions} />
 
         <TabsContent value="combinations">
           <div className="flex flex-col gap-10">
@@ -1547,6 +1671,10 @@ export default function DiscoverCombinationsPage() {
               </Section>
             ) : null}
           </div>
+        </TabsContent>
+
+        <TabsContent value="bundles">
+          <BundlesSection bundles={result.bundles} />
         </TabsContent>
 
         <TabsContent value="rules">

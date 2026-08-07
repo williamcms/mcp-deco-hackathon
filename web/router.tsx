@@ -1,14 +1,10 @@
 import { createHashHistory } from "@tanstack/history";
 import { createRootRoute, createRoute, createRouter, Outlet, RouterProvider } from "@tanstack/react-router";
 import { useMcpHostContext, useMcpState } from "./context.tsx";
-import CollectShopifySalesPage from "./tools/collect-shopify-sales/index.tsx";
 import DiscoverCombinationsPage from "./tools/discover-combinations/index.tsx";
-import ListBundlesPage from "./tools/list-bundles/index.tsx";
 
 const TOOL_PAGES: Record<string, React.ComponentType> = {
-  collect_shopify_sales: CollectShopifySalesPage,
   discover_combinations: DiscoverCombinationsPage,
-  list_bundles: ListBundlesPage,
 };
 
 function ToolRouter() {

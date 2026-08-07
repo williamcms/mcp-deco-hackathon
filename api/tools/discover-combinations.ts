@@ -2,6 +2,7 @@ import { createTool } from "@decocms/runtime/tools";
 import { z } from "zod";
 import { discoverCombinations } from "../analysis/discover.ts";
 import { aggregate, round, toNumber } from "../shopify/aggregate.ts";
+import { fetchBundleProducts, summarizeBundles } from "../shopify/bundles.ts";
 import { resolveCredentials } from "../shopify/client.ts";
 import { fetchOrders, type ShopifyOrder } from "../shopify/orders.ts";
 import type { Env } from "../types/env.ts";
@@ -198,6 +199,19 @@ const recentOrderSchema = z.object({
   ),
 });
 
+const bundleSummarySchema = z.object({
+  productId: z.string(),
+  title: z.string(),
+  handle: z.string(),
+  status: z.enum(["DRAFT", "ACTIVE"]),
+  imageUrl: z.string().nullable(),
+  minPrice: z.number(),
+  maxPrice: z.number(),
+  totalInventory: z.number().nullable(),
+  adminUrl: z.string(),
+  onlineStoreUrl: z.string().nullable(),
+});
+
 export const discoverCombinationsOutputSchema = z.object({
   period: z.object({
     days: z.number(),
@@ -232,6 +246,12 @@ export const discoverCombinationsOutputSchema = z.object({
     byDayBundles: z.array(salesByDaySchema).describe("Só as vendas de produtos criados como bundle (tag 'bundle')"),
   }),
   recentOrders: z.array(recentOrderSchema).describe("Os pedidos mais recentes do período, não os de maior valor"),
+  bundles: z.object({
+    shop: z.string(),
+    currency: z.string(),
+    draft: z.array(bundleSummarySchema).describe("Bundles em rascunho, aguardando aprovação antes de publicar"),
+    active: z.array(bundleSummarySchema).describe("Bundles já publicados"),
+  }),
   warnings: z.array(z.string()),
 });
 
@@ -247,7 +267,7 @@ export const discoverCombinationsTool = (env: Env) =>
   createTool({
     id: "discover_combinations",
     description:
-      "Etapa 2 da descoberta: roda market basket analysis (Apriori ou FP-Growth) sobre os pedidos da Shopify e devolve as combinações de produtos que valem virar campanha. Para cada uma calcula support, confidence, lift, margem incremental (descontado o acaso) e viabilidade de estoque, além de regras de associação A -> B, análise de sequência de compra (o que o cliente volta para comprar e em quantos dias) e uma visão geral de vendas do mesmo período (receita, ticket médio, série diária, receita por categoria e os pedidos mais recentes). Use quando precisar decidir quais kits, combos ou cross-sell promover.",
+      "Etapa 2 da descoberta: roda market basket analysis (Apriori ou FP-Growth) sobre os pedidos da Shopify e devolve as combinações de produtos que valem virar campanha. Para cada uma calcula support, confidence, lift, margem incremental (descontado o acaso) e viabilidade de estoque, além de regras de associação A -> B, análise de sequência de compra (o que o cliente volta para comprar e em quantos dias), uma visão geral de vendas do mesmo período (receita, ticket médio, série diária — geral e só de bundles — e os pedidos mais recentes) e a lista de bundles da loja (rascunho aguardando aprovação e já publicados). Use quando precisar decidir quais kits, combos ou cross-sell promover.",
     inputSchema: discoverCombinationsInputSchema,
     outputSchema: discoverCombinationsOutputSchema,
     _meta: { ui: { resourceUri: DISCOVER_COMBINATIONS_RESOURCE_URI } },
@@ -319,6 +339,10 @@ export const discoverCombinationsTool = (env: Env) =>
       });
       const recentOrders = buildRecentOrders(collected.orders, context.includeCancelled ?? false, RECENT_ORDERS_LIMIT);
 
+      // Separate, cheap call: a single product search by tag, independent of the order window above.
+      const bundleProducts = await fetchBundleProducts(credentials, BUNDLES_LIMIT);
+      const bundles = summarizeBundles(bundleProducts.products, credentials.shopDomain);
+
       return {
         period: {
           days: periodDays,
@@ -353,10 +377,19 @@ export const discoverCombinationsTool = (env: Env) =>
           byDayBundles: bundleSales.byDay,
         },
         recentOrders,
+        bundles: {
+          shop: bundleProducts.shop.name,
+          currency: bundleProducts.shop.currencyCode,
+          draft: bundles.draft,
+          active: bundles.active,
+        },
         warnings,
       };
     },
   });
+
+/** Matches list_bundles' own former default — plenty for an approval-queue glance. */
+const BUNDLES_LIMIT = 50;
 
 /** Not the sales dashboard's top-value items — just the newest orders, for a quick glance. */
 const RECENT_ORDERS_LIMIT = 8;

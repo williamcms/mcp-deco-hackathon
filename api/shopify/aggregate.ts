@@ -1,5 +1,89 @@
-import type { CollectedItem, CollectShopifySalesOutput } from "../tools/collect-shopify-sales.ts";
+import { z } from "zod";
 import type { ShopifyLineItem, ShopifyOrder } from "./orders.ts";
+
+// ---------------------------------------------------------------------------
+// Output shape
+//
+// Shared by every tool that aggregates Shopify orders into a sales view
+// (currently just discover_combinations). Lives here, next to the function
+// that builds it, instead of inside any one tool.
+// ---------------------------------------------------------------------------
+
+const collectedItemSchema = z.object({
+  orderId: z.string(),
+  orderName: z.string(),
+  createdAt: z.string(),
+  product: z.string(),
+  variant: z.string().nullable(),
+  sku: z.string().nullable(),
+  quantity: z.number(),
+  unitPrice: z.number(),
+  paid: z.number().describe("Preço pago pela linha, já com desconto"),
+  discount: z.number(),
+  discountPct: z.number(),
+  channel: z.string(),
+  region: z.string(),
+  category: z.string(),
+  stock: z.number().nullable().describe("Estoque atual da variante"),
+  unitCost: z.number().nullable(),
+  margin: z.number().nullable(),
+  marginPct: z.number().nullable(),
+});
+
+export type CollectedItem = z.infer<typeof collectedItemSchema>;
+
+const dimensionSchema = z.object({
+  name: z.string(),
+  revenue: z.number(),
+  units: z.number(),
+  orders: z.number(),
+  marginPct: z.number().nullable(),
+});
+
+export const salesAggregateSchema = z.object({
+  period: z.object({
+    days: z.number(),
+    from: z.string(),
+    to: z.string(),
+  }),
+  currency: z.string(),
+  summary: z.object({
+    orders: z.number(),
+    units: z.number(),
+    revenue: z.number().describe("Receita líquida (após descontos)"),
+    grossRevenue: z.number().describe("Receita bruta (preço de tabela)"),
+    discount: z.number(),
+    discountPct: z.number(),
+    avgTicket: z.number(),
+    cost: z.number().describe("Custo dos itens com custo cadastrado"),
+    margin: z.number(),
+    marginPct: z.number().nullable().describe("Margem % sobre a receita com custo conhecido"),
+    costCoverage: z.number().describe("% da receita que tem custo cadastrado — confiança da margem"),
+  }),
+  byDay: z.array(
+    z.object({
+      date: z.string(),
+      revenue: z.number(),
+      units: z.number(),
+      orders: z.number(),
+    }),
+  ),
+  byChannel: z.array(dimensionSchema),
+  byRegion: z.array(dimensionSchema),
+  byCategory: z.array(
+    z.object({
+      name: z.string(),
+      revenue: z.number(),
+      units: z.number(),
+      marginPct: z.number().nullable(),
+    }),
+  ),
+  items: z.array(collectedItemSchema),
+  itemsTotal: z.number().describe("Total de linhas antes do corte por maxItems"),
+  warnings: z.array(z.string()),
+});
+
+export type SalesAggregate = z.infer<typeof salesAggregateSchema>;
 
 export function toNumber(amount: string | null | undefined): number {
   if (amount == null) return 0;
@@ -105,7 +189,7 @@ export interface AggregateOptions {
   productFilter?: (product: ShopifyLineItem["product"]) => boolean;
 }
 
-export function aggregate(orders: ShopifyOrder[], options: AggregateOptions): CollectShopifySalesOutput {
+export function aggregate(orders: ShopifyOrder[], options: AggregateOptions): SalesAggregate {
   const { periodDays, from, to, includeCancelled, maxItems, truncated, ordersWithTruncatedItems, productFilter } =
     options;
 
