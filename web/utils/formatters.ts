@@ -1,12 +1,4 @@
 /**
- * Formata uma data ISO como data curta pt-BR (ex: "06/08/2026").
- * Usado na tela de combinações de pedidos (shopify-orders).
- */
-export function formatOrderDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("pt-BR");
-}
-
-/**
  * "2026-08-06" → "06/08". Split manual (em vez de `Date`) para não escorregar
  * de fuso horário ao formatar uma data que já vem só com dia.
  */

@@ -3,7 +3,6 @@ import { prompts } from "./prompts/index.ts";
 import { collectShopifySalesAppResource } from "./resources/collect-shopify-sales.ts";
 import { discoverCombinationsAppResource } from "./resources/discover-combinations.ts";
 import { listBundlesAppResource } from "./resources/list-bundles.ts";
-import { shopifyOrdersAppResource } from "./resources/shopify-orders.ts";
 import { tools } from "./tools/index.ts";
 import { type Env, StateSchema } from "./types/env.ts";
 
@@ -101,12 +100,7 @@ const runtime = withRuntime<Env, typeof StateSchema>({
   },
   tools,
   prompts,
-  resources: [
-    shopifyOrdersAppResource,
-    collectShopifySalesAppResource,
-    discoverCombinationsAppResource,
-    listBundlesAppResource,
-  ],
+  resources: [collectShopifySalesAppResource, discoverCombinationsAppResource, listBundlesAppResource],
 });
 
 /** Platform-agnostic fetch handler. Use this in platform entrypoints. */

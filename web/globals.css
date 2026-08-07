@@ -1,5 +1,13 @@
 @import "tailwindcss";
 
+/*
+ * Tailwind v4 scans the whole project for candidate classes by default (no
+ * content config). Markdown docs quote plenty of Tailwind classes as
+ * examples — including deliberately "wrong" ones (docs/default-theme.md's
+ * mismatch table) — none of which should ever generate real CSS.
+ */
+@source not "../**/*.md";
+
 @custom-variant dark (&:is([data-theme="dark"] *));
 
 :root {

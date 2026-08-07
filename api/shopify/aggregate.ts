@@ -1,6 +1,6 @@
 import type {
-	CollectShopifySalesOutput,
 	CollectedItem,
+	CollectShopifySalesOutput,
 } from "../tools/collect-shopify-sales.ts";
 import type { ShopifyOrder } from "./orders.ts";
 
@@ -173,8 +173,7 @@ export function aggregate(
 				: original - lineDiscount;
 
 			const unitCostAmount = line.variant?.inventoryItem?.unitCost?.amount;
-			const unitCost =
-				unitCostAmount != null ? toNumber(unitCostAmount) : null;
+			const unitCost = unitCostAmount != null ? toNumber(unitCostAmount) : null;
 			const lineCost = unitCost != null ? unitCost * line.quantity : null;
 			const lineMargin = lineCost != null ? paid - lineCost : null;
 
@@ -265,7 +264,8 @@ export function aggregate(
 		}),
 	);
 
-	const costCoverage = revenue > 0 ? round((revenueWithCost / revenue) * 100) : 0;
+	const costCoverage =
+		revenue > 0 ? round((revenueWithCost / revenue) * 100) : 0;
 
 	const warnings: string[] = [];
 	if (periodDays > 60) {
@@ -312,7 +312,8 @@ export function aggregate(
 			revenue: round(revenue),
 			grossRevenue: round(grossRevenue),
 			discount: round(discount),
-			discountPct: grossRevenue > 0 ? round((discount / grossRevenue) * 100) : 0,
+			discountPct:
+				grossRevenue > 0 ? round((discount / grossRevenue) * 100) : 0,
 			avgTicket: countedOrders > 0 ? round(revenue / countedOrders) : 0,
 			cost: round(costTotal),
 			margin: round(revenueWithCost - costTotal),

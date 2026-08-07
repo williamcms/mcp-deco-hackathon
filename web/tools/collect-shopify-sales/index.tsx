@@ -1,11 +1,11 @@
-import { ErrorScreen } from "@/components/error-screen.tsx";
-import { Badge } from "@/components/ui/badge.tsx";
-import { Button } from "@/components/ui/button.tsx";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.tsx";
-import { ChartContainer } from "@/components/ui/chart.tsx";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table.tsx";
-import { useMcpApp, useMcpHostContext, useMcpState } from "@/context.tsx";
-import { createSalesFormatters, formatOptionalPercentage, formatShortDate } from "@/utils/formatters.ts";
+import { ErrorScreen } from "@/web/components/error-screen.tsx";
+import { Badge } from "@/web/components/ui/badge.tsx";
+import { Button } from "@/web/components/ui/button.tsx";
+import { Card, CardContent, CardHeader, CardTitle } from "@/web/components/ui/card.tsx";
+import { ChartContainer } from "@/web/components/ui/chart.tsx";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/web/components/ui/table.tsx";
+import { useMcpApp, useMcpHostContext, useMcpState } from "@/web/context.tsx";
+import { createSalesFormatters, formatOptionalPercentage, formatShortDate } from "@/web/utils/formatters.ts";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, LabelList, Tooltip, XAxis, YAxis } from "recharts";
 import type {
   CollectedItem,
@@ -61,14 +61,12 @@ interface TipRow {
 function ChartTip({ active, title, rows }: { active?: boolean; title?: string; rows: TipRow[] }) {
   if (!active || rows.length === 0) return null;
   return (
-    <div className="gap-1.5 grid bg-background shadow-xl px-2.5 py-1.5 border border-border/50 rounded-lg min-w-[9rem] text-xs">
+    <div className="gap-1.5 grid bg-background shadow-xl px-2.5 py-1.5 border border-border/50 rounded-lg min-w-36 text-xs">
       {title ? <div className="font-medium">{title}</div> : null}
       {rows.map((row) => (
         <div key={row.label} className="flex justify-between items-center gap-3">
           <span className="flex items-center gap-1.5 text-muted-foreground">
-            {row.color ? (
-              <span className="rounded-[2px] w-2 h-2 shrink-0" style={{ backgroundColor: row.color }} />
-            ) : null}
+            {row.color ? <span className="rounded-xs w-2 h-2 shrink-0" style={{ backgroundColor: row.color }} /> : null}
             {row.label}
           </span>
           <span className="font-mono font-medium tabular-nums">{row.value}</span>
@@ -291,7 +289,7 @@ function Dashboard({
           <CardTitle className="font-medium text-sm">Receita por dia</CardTitle>
         </CardHeader>
         <CardContent>
-          <ChartContainer config={{}} className="w-full h-[240px] aspect-auto">
+          <ChartContainer config={{}} className="w-full h-60 aspect-auto">
             <AreaChart data={data.byDay} margin={{ left: 4, right: 8, top: 8 }}>
               <defs>
                 <linearGradient id="revenueFill" x1="0" y1="0" x2="0" y2="1">
@@ -356,7 +354,7 @@ function Dashboard({
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <ChartContainer config={{}} className="w-full h-[280px] aspect-auto">
+          <ChartContainer config={{}} className="w-full h-70 aspect-auto">
             <BarChart data={data.byCategory} layout="vertical" margin={{ left: 4, right: 56 }}>
               <CartesianGrid horizontal={false} strokeDasharray="3 3" />
               <XAxis
@@ -478,7 +476,7 @@ function ItemRow({ item, money, int }: { item: CollectedItem; money: Intl.Number
       <TableCell className="text-muted-foreground whitespace-nowrap">
         {new Date(item.createdAt).toLocaleDateString("pt-BR")}
       </TableCell>
-      <TableCell className="max-w-[220px]">
+      <TableCell className="max-w-55">
         <span className="block truncate" title={item.product}>
           {item.product}
         </span>

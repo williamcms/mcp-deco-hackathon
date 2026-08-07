@@ -1,21 +1,21 @@
 import * as React from "react";
 
-import { cn } from "@/lib/utils";
+import { cn } from "@/web/lib/utils";
 
 function Input({ className, type, ...props }: React.ComponentProps<"input">) {
-	return (
-		<input
-			type={type}
-			data-slot="input"
-			className={cn(
-				"h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-xs transition-[color,box-shadow] outline-none selection:bg-primary selection:text-primary-foreground file:inline-flex file:h-7 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm dark:bg-input/30",
-				"focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50",
-				"aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40",
-				className,
-			)}
-			{...props}
-		/>
-	);
+  return (
+    <input
+      type={type}
+      data-slot="input"
+      className={cn(
+        "file:inline-flex bg-transparent selection:bg-primary dark:bg-input/30 file:bg-transparent disabled:opacity-50 shadow-xs px-3 py-1 border border-input file:border-0 rounded-md outline-none w-full min-w-0 h-9 file:h-7 file:font-medium selection:text-primary-foreground placeholder:text-muted-foreground file:text-foreground md:text-sm file:text-sm text-base transition-[color,box-shadow] disabled:cursor-not-allowed disabled:pointer-events-none",
+        "focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50",
+        "aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40",
+        className,
+      )}
+      {...props}
+    />
+  );
 }
 
 export { Input };

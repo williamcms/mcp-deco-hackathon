@@ -1,4 +1,4 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.tsx";
+import { Card, CardContent, CardHeader, CardTitle } from "@/web/components/ui/card.tsx";
 import { useEffect } from "react";
 
 export interface ErrorScreenProps {
@@ -26,6 +26,7 @@ export function ErrorScreen({ title, message, hint, cancelled }: ErrorScreenProp
         <CardHeader>
           <CardTitle className={cancelled ? undefined : "text-destructive"}>{title}</CardTitle>
         </CardHeader>
+
         <CardContent className="space-y-2">
           <p className={cancelled ? "text-sm whitespace-pre-wrap" : "text-sm text-destructive whitespace-pre-wrap"}>
             {message}

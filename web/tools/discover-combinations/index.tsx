@@ -1,21 +1,27 @@
-import { ErrorScreen } from "@/components/error-screen.tsx";
-import { Badge } from "@/components/ui/badge.tsx";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table.tsx";
-import { useMcpApp, useMcpHostContext, useMcpState } from "@/context.tsx";
+import type { CreateBundleOutput } from "@/api/tools/create-bundle.ts";
+import type { DiscoverCombinationsInput, DiscoverCombinationsOutput } from "@/api/tools/discover-combinations.ts";
+import { ErrorScreen } from "@/web/components/error-screen.tsx";
+import { Badge } from "@/web/components/ui/badge.tsx";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/web/components/ui/table.tsx";
+import { useMcpApp, useMcpHostContext, useMcpState } from "@/web/context.tsx";
+import { cn } from "@/web/lib/utils.ts";
+import { buildExplainPrompt, combinationTitle } from "@/web/tools/discover-combinations/explain-prompt.ts";
+import { ActionMenu, HoverTip } from "@/web/tools/discover-combinations/floating.tsx";
+import { METRICS, type MetricKey } from "@/web/tools/discover-combinations/metrics-copy.ts";
 import {
   COMBINATION_SCORE_COLORS,
   COMBINATION_SCORE_WEIGHTS,
   INVENTORY_VIABILITY_LABELS,
   INVENTORY_VIABILITY_STYLES,
   LIFT_NORMALIZATION_CEILING,
-} from "@/utils/constants.ts";
+} from "@/web/utils/constants.ts";
 import {
   type CombinationFormatters,
   createCombinationFormatters,
   formatLiftMultiplier,
   formatPercentage,
-} from "@/utils/formatters.ts";
-import { extractToolErrorText } from "@/utils/mcp-tool-result.ts";
+} from "@/web/utils/formatters.ts";
+import { extractToolErrorText } from "@/web/utils/mcp-tool-result.ts";
 import {
   AlertTriangle,
   ArrowRight,
@@ -29,14 +35,6 @@ import {
   Users,
 } from "lucide-react";
 import { type ReactNode, useState } from "react";
-import type { CreateBundleOutput } from "../../../api/tools/create-bundle.ts";
-import type {
-  DiscoverCombinationsInput,
-  DiscoverCombinationsOutput,
-} from "../../../api/tools/discover-combinations.ts";
-import { buildExplainPrompt, combinationTitle } from "./explain-prompt.ts";
-import { ActionMenu, HoverTip } from "./floating.tsx";
-import { METRICS, type MetricKey } from "./metrics-copy.ts";
 
 type Combination = DiscoverCombinationsOutput["combinations"][number];
 type Rule = DiscoverCombinationsOutput["rules"][number];
@@ -45,15 +43,30 @@ type Sequence = DiscoverCombinationsOutput["sequences"][number];
 const PERIODS = [7, 30, 60] as const;
 const TOOL_NAME = "discover_combinations";
 
+type SortKey = "score" | "ticket" | "occurrences";
+
+const SORT_OPTIONS: Array<{ key: SortKey; label: string }> = [
+  { key: "score", label: "Score" },
+  { key: "ticket", label: "Ticket médio" },
+  { key: "occurrences", label: "Ocorrências" },
+];
+
+/** Score order matches what the backend already returns; the other two just re-sort it. */
+function compareCombinations(a: Combination, b: Combination, sortBy: SortKey): number {
+  if (sortBy === "ticket") return b.economics.bundleRevenue - a.economics.bundleRevenue;
+  if (sortBy === "occurrences") return b.supportCount - a.supportCount;
+  return b.score - a.score || b.supportCount - a.supportCount;
+}
+
 // ---------------------------------------------------------------------------
-// Primitivas do styleguide
+// Styleguide primitives
 // ---------------------------------------------------------------------------
 
 function Page({ children }: { children: ReactNode }) {
   return (
     <div className="flex flex-col bg-background w-full h-full overflow-hidden">
       <div className="flex-1 p-0 overflow-auto">
-        <div className="mx-auto px-4 md:px-10 pt-8 md:pt-12 pb-6 md:pb-10 w-full max-w-[1200px]">
+        <div className="mx-auto px-4 md:px-10 pt-8 md:pt-12 pb-6 md:pb-10 w-full max-w-300">
           <div className="flex flex-col gap-10">{children}</div>
         </div>
       </div>
@@ -61,7 +74,17 @@ function Page({ children }: { children: ReactNode }) {
   );
 }
 
-function Section({ title, description, children }: { title?: string; description?: string; children: ReactNode }) {
+function Section({
+  title,
+  description,
+  right,
+  children,
+}: {
+  title?: string;
+  description?: string;
+  right?: ReactNode;
+  children: ReactNode;
+}) {
   return (
     <section className="flex flex-col gap-3">
       {title ? (
@@ -70,6 +93,7 @@ function Section({ title, description, children }: { title?: string; description
             <h2 className="font-medium text-[15px] leading-tight">{title}</h2>
             {description ? <p className="text-muted-foreground text-sm leading-snug">{description}</p> : null}
           </div>
+          {right ? <div className="shrink-0">{right}</div> : null}
         </div>
       ) : null}
       {children}
@@ -88,7 +112,7 @@ function Card({ children, className = "" }: { children: ReactNode; className?: s
   );
 }
 
-/** Linha de card no padrão do Studio, com separador acima quando não é a primeira. */
+/** Studio-style card row, with a divider above unless it's the first. */
 function Row({
   icon,
   title,
@@ -143,7 +167,6 @@ function Alert({
   );
 }
 
-/** Botão pequeno no padrão do Studio (h-7). */
 function SmallButton({
   children,
   onClick,
@@ -157,9 +180,6 @@ function SmallButton({
   disabled?: boolean;
   variant?: "outline" | "ghost";
 }) {
-  const base =
-    "inline-flex items-center justify-center whitespace-nowrap rounded-lg h-7 px-2.5 text-sm gap-1.5 transition-all outline-none focus-visible:border-ring focus-visible:ring-[2px] focus-visible:ring-ring/20 disabled:pointer-events-none disabled:opacity-50";
-
   const tone = active
     ? "bg-primary text-primary-foreground"
     : variant === "outline"
@@ -167,13 +187,21 @@ function SmallButton({
       : "hover:bg-accent hover:text-accent-foreground";
 
   return (
-    <button type="button" onClick={onClick} disabled={disabled} className={`${base} ${tone}`}>
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={cn(
+        "inline-flex justify-center items-center gap-1.5 disabled:opacity-50 px-2.5 focus-visible:border-ring rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring/20 h-7 text-sm whitespace-nowrap transition-all disabled:pointer-events-none",
+        tone,
+      )}
+    >
       {children}
     </button>
   );
 }
 
-/** Ícone de ajuda que abre a explicação da métrica. */
+/** Help icon that opens the metric's explanation. */
 function InfoTip({ metric, content }: { metric?: MetricKey; content?: ReactNode }) {
   const body =
     content ??
@@ -201,7 +229,7 @@ function HeadWithTip({ metric, align = "left" }: { metric: MetricKey; align?: "l
 }
 
 // ---------------------------------------------------------------------------
-// Células de dado
+// Data cells
 // ---------------------------------------------------------------------------
 
 function MetricCard({ icon, label, value, hint }: { icon: ReactNode; label: string; value: string; hint: string }) {
@@ -223,11 +251,7 @@ function ProductChips({ products }: { products: Array<{ id: string; title: strin
       {products.map((product, i) => (
         <span key={product.id} className="flex items-center gap-1">
           {i > 0 ? <span className="text-muted-foreground text-xs">+</span> : null}
-          <Badge
-            variant="secondary"
-            className="block px-2 py-0.5 max-w-[180px] font-normal truncate"
-            title={product.title}
-          >
+          <Badge variant="secondary" className="block px-2 py-0.5 max-w-45 font-normal truncate" title={product.title}>
             {product.title}
           </Badge>
         </span>
@@ -237,8 +261,8 @@ function ProductChips({ products }: { products: Array<{ id: string; title: strin
 }
 
 /**
- * Lift é o número que mais engana quem lê rápido: 1,0x não é "ruim", é
- * "nenhuma relação". A cor e a leitura em texto tiram a ambiguidade.
+ * Lift is the number most likely to mislead a quick read: 1.0x isn't "bad",
+ * it's "no relationship". The color and text reading remove the ambiguity.
  */
 function LiftCell({ lift }: { lift: number }) {
   const tone =
@@ -316,7 +340,7 @@ function ViabilityCell({
   );
 }
 
-/** Score com a conta aberta: barra empilhada + decomposição no tooltip. */
+/** Score with the math shown: stacked bar + breakdown in the tooltip. */
 function ScoreCell({ combination, formatters }: { combination: Combination; formatters: CombinationFormatters }) {
   const { scoreBreakdown: parts, score } = combination;
 
@@ -337,7 +361,7 @@ function ScoreCell({ combination, formatters }: { combination: Combination; form
               <span key={segment.key} className="flex justify-between items-center gap-4">
                 <span className="flex items-center gap-1.5 text-muted-foreground">
                   <span
-                    className="rounded-[2px] size-2 shrink-0"
+                    className="rounded-xs size-2 shrink-0"
                     style={{
                       backgroundColor: COMBINATION_SCORE_COLORS[segment.key],
                     }}
@@ -376,7 +400,7 @@ function ScoreCell({ combination, formatters }: { combination: Combination; form
 }
 
 // ---------------------------------------------------------------------------
-// Tabelas
+// Tables
 // ---------------------------------------------------------------------------
 
 function Empty({ children }: { children: ReactNode }) {
@@ -611,7 +635,7 @@ function SequencesTable({ sequences, formatters }: { sequences: Sequence[]; form
 }
 
 // ---------------------------------------------------------------------------
-// Explicação do score e glossário
+// Score explanation and glossary
 // ---------------------------------------------------------------------------
 
 function ScoreExplainer() {
@@ -648,7 +672,7 @@ function ScoreExplainer() {
           title={
             <span className="flex items-center gap-2">
               <span
-                className="rounded-[2px] size-2 shrink-0"
+                className="rounded-xs size-2 shrink-0"
                 style={{ backgroundColor: COMBINATION_SCORE_COLORS[axis.key] }}
               />
               {axis.title}
@@ -698,7 +722,7 @@ function Glossary() {
 }
 
 // ---------------------------------------------------------------------------
-// Página
+// Page
 // ---------------------------------------------------------------------------
 
 function Spinner({ label }: { label: string }) {
@@ -711,9 +735,9 @@ function Spinner({ label }: { label: string }) {
 }
 
 /**
- * Resultado de create_bundle mostrado inline, já que a tool não tem UI
- * própria. Simulação (dryRun) mostra o botão de publicar; depois de criado,
- * só o link pro admin.
+ * create_bundle's result shown inline, since the tool has no UI of its own.
+ * A simulation (dryRun) shows the publish button; once created, just the
+ * admin link.
  */
 function BundlePreview({
   title,
@@ -823,16 +847,17 @@ export default function DiscoverCombinationsPage() {
   const isFullscreen = hostContext?.displayMode === "fullscreen";
   const formatters = createCombinationFormatters();
 
-  // Resultado de uma re-execução disparada pela própria tela. Sobrepõe o
-  // resultado que veio do host até a próxima chamada da tool.
+  // Result of a re-run triggered by this screen itself. Overrides the
+  // result that came from the host until the tool is called again.
   const [override, setOverride] = useState<DiscoverCombinationsOutput | null>(null);
   const [runningDays, setRunningDays] = useState<number | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
 
-  // Prévia do bundle aberta pela ação "Montar bundle" de uma combinação.
-  // create_bundle não tem UI própria: o resultado vem direto pra cá. Guarda
-  // os componentes junto (não só o resultado) para o botão de publicar poder
-  // rechamar com dryRun: false sem depender da combinação original.
+  // Bundle preview opened by a combination's "Montar bundle" action.
+  // create_bundle has no UI of its own: the result comes straight here.
+  // Keeps the components alongside the result so the publish button can
+  // call again with dryRun: false without depending on the original
+  // combination.
   const [bundlePreview, setBundlePreview] = useState<{
     title: string;
     components: Array<{ productId: string }>;
@@ -841,13 +866,16 @@ export default function DiscoverCombinationsPage() {
   const [bundleBusy, setBundleBusy] = useState<"simulate" | "publish" | null>(null);
   const [bundleError, setBundleError] = useState<string | null>(null);
 
+  const [sortBy, setSortBy] = useState<SortKey>("score");
+
   /**
-   * Chama a tool direto no servidor que serve esta app.
+   * Calls the tool directly on the server that serves this app.
    *
-   * A primeira versão pedia ao modelo, por mensagem no chat, para rodar a
-   * tool de novo — e o agente respondia que não conhecia `discover_combinations`,
-   * porque depende de a conexão estar publicada para ele. `callServerTool` não
-   * passa pelo agente: fala com o mesmo servidor que já serve esta interface.
+   * The first version asked the model, via a chat message, to run the tool
+   * again — and the agent replied it didn't know `discover_combinations`,
+   * since that depends on the connection being published to it.
+   * `callServerTool` doesn't go through the agent: it talks to the same
+   * server that already serves this interface.
    */
   async function runFor(days: number) {
     if (!app || runningDays !== null) return;
@@ -877,9 +905,10 @@ export default function DiscoverCombinationsPage() {
   }
 
   /**
-   * Chama create_bundle direto no servidor, sem passar pelo chat — mesma
-   * razão do runFor acima. create_bundle não tem UI própria (_meta.ui), então
-   * o resultado é tratado aqui mesmo, como uma prévia dentro desta tela.
+   * Calls create_bundle directly on the server, without going through chat —
+   * same reason as runFor above. create_bundle has no UI of its own
+   * (`_meta.ui`), so the result is handled right here, as a preview inside
+   * this screen.
    */
   async function runCreateBundle(title: string, components: Array<{ productId: string }>, dryRun: boolean) {
     if (!app || bundleBusy) return;
@@ -949,7 +978,7 @@ export default function DiscoverCombinationsPage() {
       );
     }
 
-    // Conectado, cancelado ou sem resultado: dá para rodar a análise daqui.
+    // Connected, cancelled, or no result yet: the analysis can be run from here.
     return (
       <Page>
         <div className="font-medium text-xl">Descoberta de combinações</div>
@@ -1059,11 +1088,20 @@ export default function DiscoverCombinationsPage() {
 
       <Section
         title="Combinações rankeadas"
-        description="Produtos que saem juntos no mesmo pedido, ordenados pelo score. Passe o mouse em qualquer número para entender o que ele significa, ou use o menu da linha para pedir uma explicação ou montar um bundle."
+        description="Produtos que saem juntos no mesmo pedido. Passe o mouse em qualquer número para entender o que ele significa, ou use o menu da linha para pedir uma explicação ou montar um bundle."
+        right={
+          <div className="flex items-center gap-1.5">
+            {SORT_OPTIONS.map((option) => (
+              <SmallButton key={option.key} active={sortBy === option.key} onClick={() => setSortBy(option.key)}>
+                {option.label}
+              </SmallButton>
+            ))}
+          </div>
+        }
       >
         <Card>
           <CombinationsTable
-            combinations={result.combinations}
+            combinations={[...result.combinations].sort((a, b) => compareCombinations(a, b, sortBy))}
             formatters={formatters}
             context={{
               periodDays: period.days,

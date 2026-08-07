@@ -1,8 +1,8 @@
-import { ErrorScreen } from "@/components/error-screen.tsx";
-import { Badge } from "@/components/ui/badge.tsx";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.tsx";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table.tsx";
-import { useMcpState } from "@/context.tsx";
+import { ErrorScreen } from "@/web/components/error-screen.tsx";
+import { Badge } from "@/web/components/ui/badge.tsx";
+import { Card, CardContent, CardHeader, CardTitle } from "@/web/components/ui/card.tsx";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/web/components/ui/table.tsx";
+import { useMcpState } from "@/web/context.tsx";
 import { ExternalLink, Package } from "lucide-react";
 import type { ReactNode } from "react";
 import type { ListBundlesInput, ListBundlesOutput } from "../../../api/tools/list-bundles.ts";

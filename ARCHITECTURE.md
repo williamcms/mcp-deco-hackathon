@@ -368,7 +368,7 @@ Pontos que importam:
 
 - **Default export obrigatório** — é assim que o router importa.
 - `useMcpState<Input, Output>()` com os tipos importados **direto do arquivo do servidor**. Isso dá type-safety ponta a ponta sem nenhum codegen: mudou o schema da tool, o TypeScript acusa na UI.
-- O import de `api/` usa **caminho relativo** (`../../../api/...`), não o alias `@`. O alias aponta só para `web/`.
+- O import de `api/` pode usar o alias `@` (`@/api/tools/...`) ou caminho relativo (`../../../api/...`) — o alias cobre a raiz do projeto inteira, não só `web/`.
 - Trate os 6 status.
 
 ### Passo 7 — Registrar em `TOOL_PAGES` ([web/router.tsx](web/router.tsx))
@@ -447,7 +447,7 @@ Registre em `api/prompts/index.ts`, mesmo padrão de array das tools.
 ## 8. Regras de estilo e armadilhas
 
 - **Imports precisam de extensão**: `./hello.ts`, `./index.tsx`. O Biome trata `useImportExtensions` como `error`.
-- **Alias `@` → `./web`**. Para importar de `api/`, use caminho relativo.
+- **Alias `@` → raiz do projeto** (não só `web/`) — `@/web/...` ou `@/api/...`.
 - **Tabs e aspas duplas** — formatação do Biome. Rode `bun run fmt`.
 - **[api/app.ts](api/app.ts) nunca importa API específica de plataforma.** Bun, Workers, Deno, Node e Lambda são resolvidos nos entrypoints `api/main.<plataforma>.ts`, que só reexportam `app.fetch`.
 - **O endpoint público é `/api/mcp`.** O middleware `withMcpApiRoute` reescreve `/api/mcp*` → `/mcp*` internamente e devolve **404 de propósito** para `/mcp` puro ([api/app.ts:80](api/app.ts#L80)).
