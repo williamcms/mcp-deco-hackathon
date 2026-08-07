@@ -1,3 +1,4 @@
+import { X } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useId, useRef, useState } from "react";
 
 interface FloatingArrowProps {
@@ -118,6 +119,54 @@ export function HoverTip(props: HoverTipProps) {
         </>
       ) : null}
     </>
+  );
+}
+
+export interface ModalProps {
+  open: boolean;
+  onClose: () => void;
+  title: string;
+  children: ReactNode;
+}
+
+/** Centered overlay, not anchored to a trigger — unlike HoverTip/ActionMenu, no position tracking needed. */
+export function Modal(props: ModalProps) {
+  const { open, onClose, title, children } = props;
+
+  useEffect(() => {
+    if (!open) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  return (
+    <div className="z-3 fixed inset-0 flex justify-center items-center p-4">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} aria-hidden="true" />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        className="z-4 relative flex flex-col gap-4 bg-background [&::-webkit-scrollbar-thumb]:bg-[color-mix(in_oklab,var(--color-foreground)_20%,transparent)] [&::-webkit-scrollbar-track]:bg-transparent card-shadow p-5 rounded-xl [&::-webkit-scrollbar-thumb]:rounded-full w-full [&::-webkit-scrollbar]:w-1.5 max-w-125 max-h-[80vh] overflow-y-auto [scrollbar-width:thin] [scrollbar-color:color-mix(in_oklab,var(--color-foreground)_20%,transparent)_transparent]"
+      >
+        <div className="flex justify-between items-center gap-3">
+          <h2 className="font-medium text-base">{title}</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Fechar"
+            className="flex justify-center items-center hover:bg-accent rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring/40 size-7 text-muted-foreground transition-colors hover:text-accent-foreground"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+        {children}
+      </div>
+    </div>
   );
 }
 

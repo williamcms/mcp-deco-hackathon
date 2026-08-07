@@ -21,9 +21,9 @@ export function formatOptionalPercentage(value: number | null): string {
   return value == null ? "—" : `${value.toLocaleString("pt-BR")}%`;
 }
 
-/** Formata um lift (razão de co-ocorrência) como múltiplo (ex: "1,50x"). */
+/** Formata um lift (razão de co-ocorrência) como múltiplo, sempre com 2 casas (ex: "8,00x"). */
 export function formatLiftMultiplier(lift: number): string {
-  return `${lift.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}x`;
+  return `${lift.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}x`;
 }
 
 /**

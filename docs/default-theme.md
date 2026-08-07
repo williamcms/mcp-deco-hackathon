@@ -44,17 +44,17 @@ tudo isso via Tailwind v4 + tokens CSS, e as classes abaixo são as mesmas que o
 Mapeamento de `web/globals.css` (`@theme inline`), do token Tailwind pro CSS var que ele
 resolve:
 
-| Classe Tailwind | CSS var | Uso |
-|---|---|---|
-| `bg-background` | `--color-background` | Fundo da página |
-| `bg-card` / `text-card-foreground` | `--color-card` / `--color-card-foreground` | Superfície de `Card`, `Alert` |
-| `bg-muted` / `bg-muted/60` | `--color-muted` | Fundo de badge/ícone neutro |
-| `text-muted-foreground` | `--color-muted-foreground` | Texto secundário (descrições, hints) |
-| `bg-accent` / `text-accent-foreground` | `--color-accent` | Hover de botão/menu item |
-| `bg-primary` / `text-primary-foreground` | `--color-primary` | Botão/estado ativo |
-| `text-destructive` | `--color-destructive` | Texto de erro/perigo |
-| `border-border` | `--color-border` | Toda borda e divisor — **sempre cheio, sem `/NN`** |
-| `ring-ring` | `--color-ring` | Anel de foco |
+| Classe Tailwind                          | CSS var                                    | Uso                                                |
+| ---------------------------------------- | ------------------------------------------ | -------------------------------------------------- |
+| `bg-background`                          | `--color-background`                       | Fundo da página                                    |
+| `bg-card` / `text-card-foreground`       | `--color-card` / `--color-card-foreground` | Superfície de `Card`, `Alert`                      |
+| `bg-muted` / `bg-muted/60`               | `--color-muted`                            | Fundo de badge/ícone neutro                        |
+| `text-muted-foreground`                  | `--color-muted-foreground`                 | Texto secundário (descrições, hints)               |
+| `bg-accent` / `text-accent-foreground`   | `--color-accent`                           | Hover de botão/menu item                           |
+| `bg-primary` / `text-primary-foreground` | `--color-primary`                          | Botão/estado ativo                                 |
+| `text-destructive`                       | `--color-destructive`                      | Texto de erro/perigo                               |
+| `border-border`                          | `--color-border`                           | Toda borda e divisor — **sempre cheio, sem `/NN`** |
+| `ring-ring`                              | `--color-ring`                             | Anel de foco                                       |
 
 `--color-border` já sai calibrado por `globals.css` (`color-mix` com o texto, 12%) — por
 isso nunca precisa de um `/50` ou `/60` em cima: a opacidade certa já está no token.
@@ -223,24 +223,26 @@ Foco também é `border-ring` + anel de `2px` a `20%` de opacidade, não `ring-2
 Overlays customizados sem portal (tooltip, menu de ação, e o que vier depois — ex: um
 modal) usam uma escala pequena e fixa, documentada aqui, não em cada componente:
 
-| Camada | Classe | Uso |
-|---|---|---|
-| Painel flutuante | `z-1` | `HoverTip`, `ActionMenu` |
-| Seta de painel flutuante | `z-2` | seta do `ActionMenu` — sempre acima do próprio painel |
+| Camada                            | Classe | Uso                                                   |
+| --------------------------------- | ------ | ----------------------------------------------------- |
+| Painel flutuante                  | `z-1`  | `HoverTip`, `ActionMenu`                              |
+| Seta de painel flutuante          | `z-2`  | seta do `ActionMenu` — sempre acima do próprio painel |
+| Modal (backdrop + botão que abre) | `z-3`  | `Modal` — backdrop cobre o resto da página            |
+| Modal (painel)                    | `z-4`  | `Modal` — acima do próprio backdrop                   |
 
-Fica margem (`z-3` a `z-10`) pra próximas camadas (ex: modal). Nunca escale pra `z-50`,
-`z-100` ou `z-[9999]` — se precisar de mais uma camada, suba dentro dessa tabela.
+Fica margem (`z-5` a `z-10`) pra próximas camadas. Nunca escale pra `z-50`, `z-100` ou
+`z-[9999]` — se precisar de mais uma camada, suba dentro dessa tabela.
 
 ## Tipografia
 
-| Elemento | Classes |
-|---|---|
-| Título de página | `text-xl font-medium` |
-| Título de seção | `text-[15px] font-medium leading-tight` |
-| Descrição de seção | `text-sm text-muted-foreground leading-snug` |
-| Título de linha (`Row`) | `text-sm font-medium` |
-| Descrição de linha (`Row`) | `text-xs text-muted-foreground leading-relaxed` |
-| Texto de botão | `text-sm` (nunca `text-xs`, mesmo em botão `h-7`) |
+| Elemento                   | Classes                                           |
+| -------------------------- | ------------------------------------------------- |
+| Título de página           | `text-xl font-medium`                             |
+| Título de seção            | `text-[15px] font-medium leading-tight`           |
+| Descrição de seção         | `text-sm text-muted-foreground leading-snug`      |
+| Título de linha (`Row`)    | `text-sm font-medium`                             |
+| Descrição de linha (`Row`) | `text-xs text-muted-foreground leading-relaxed`   |
+| Texto de botão             | `text-sm` (nunca `text-xs`, mesmo em botão `h-7`) |
 
 ## Checklist de revisão
 
@@ -258,11 +260,11 @@ Fica margem (`z-3` a `z-10`) pra próximas camadas (ex: modal). Nunca escale pra
 Registro histórico — evita reintroduzir o mesmo erro numa tool nova que copiar as
 primitivas de uma tool antiga desatualizada:
 
-| Componente | Errado (encontrado) | Correto |
-|---|---|---|
-| `Row` (divisor) | `bg-border/60` | `bg-border` |
-| `Alert` | `card-shadow`, tom neutro `text-muted-foreground` | `border border-border`, tom neutro `text-card-foreground` |
-| `SmallButton` | `text-xs`, foco `ring-2 ring-ring/30` | `text-sm`, foco `border-ring ring-[2px] ring-ring/20` |
-| z-index de overlay | `z-100` (e, no meio do caminho, uma variável CSS `--z-floating-panel` só pra virar `z-[var(...)]`) | `z-1`/`z-2` direto — token embutido do Tailwind, escala documentada aqui, não em CSS var |
-| Seta de painel flutuante | `@utility floating-surface-arrow` global pra um uso único | `color-mix(...)` arbitrário direto na classe do componente — uso único não justifica utilitário global |
-| `max-w-[300px]` num tooltip de largura fixa | tratado como "sem token equivalente" | `max-w-75` já cobre 300px na escala numérica do Tailwind |
+| Componente                                  | Errado (encontrado)                                                                                | Correto                                                                                                |
+| ------------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `Row` (divisor)                             | `bg-border/60`                                                                                     | `bg-border`                                                                                            |
+| `Alert`                                     | `card-shadow`, tom neutro `text-muted-foreground`                                                  | `border border-border`, tom neutro `text-card-foreground`                                              |
+| `SmallButton`                               | `text-xs`, foco `ring-2 ring-ring/30`                                                              | `text-sm`, foco `border-ring ring-[2px] ring-ring/20`                                                  |
+| z-index de overlay                          | `z-100` (e, no meio do caminho, uma variável CSS `--z-floating-panel` só pra virar `z-[var(...)]`) | `z-1`/`z-2` direto — token embutido do Tailwind, escala documentada aqui, não em CSS var               |
+| Seta de painel flutuante                    | `@utility floating-surface-arrow` global pra um uso único                                          | `color-mix(...)` arbitrário direto na classe do componente — uso único não justifica utilitário global |
+| `max-w-[300px]` num tooltip de largura fixa | tratado como "sem token equivalente"                                                               | `max-w-75` já cobre 300px na escala numérica do Tailwind                                               |

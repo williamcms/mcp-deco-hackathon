@@ -6,7 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useMcpApp, useMcpHostContext, useMcpState } from "@/web/context.tsx";
 import { cn } from "@/web/lib/utils.ts";
 import { buildExplainPrompt, combinationTitle } from "@/web/tools/discover-combinations/explain-prompt.ts";
-import { ActionMenu, HoverTip } from "@/web/tools/discover-combinations/floating.tsx";
+import { ActionMenu, HoverTip, Modal } from "@/web/tools/discover-combinations/floating.tsx";
 import { METRICS, type MetricKey } from "@/web/tools/discover-combinations/metrics-copy.ts";
 import {
   COMBINATION_SCORE_COLORS,
@@ -25,7 +25,9 @@ import { extractToolErrorText } from "@/web/utils/mcp-tool-result.ts";
 import {
   AlertTriangle,
   ArrowRight,
+  ChevronRight,
   Coins,
+  HelpCircle,
   Info,
   Layers,
   MoreHorizontal,
@@ -34,7 +36,7 @@ import {
   TrendingUp,
   Users,
 } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { Fragment, type ReactNode, useState } from "react";
 
 type Combination = DiscoverCombinationsOutput["combinations"][number];
 type Rule = DiscoverCombinationsOutput["rules"][number];
@@ -234,28 +236,43 @@ function HeadWithTip({ metric, align = "left" }: { metric: MetricKey; align?: "l
 
 function MetricCard({ icon, label, value, hint }: { icon: ReactNode; label: string; value: string; hint: string }) {
   return (
-    <div className="flex flex-col gap-2 bg-card card-shadow px-4 py-4 rounded-xl text-card-foreground">
+    <Card className="gap-2 p-4">
       <div className="flex items-center gap-2 text-muted-foreground">
         <span className="flex justify-center items-center bg-muted/60 rounded-lg size-7 shrink-0">{icon}</span>
-        <span className="font-medium text-xs">{label}</span>
+        <span className="font-medium text-xs uppercase tracking-wide">{label}</span>
       </div>
-      <p className="font-medium tabular-nums text-2xl leading-none">{value}</p>
+      <p className="font-semibold tabular-nums text-2xl leading-none">{value}</p>
       <p className="text-muted-foreground text-xs leading-relaxed">{hint}</p>
-    </div>
+    </Card>
   );
 }
 
+const PRODUCT_CHIPS_VISIBLE_LIMIT = 2;
+
+/** Caps at 2 real chips; a combination's 3rd+ product collapses into a single "…" chip. */
 function ProductChips({ products }: { products: Array<{ id: string; title: string }> }) {
+  const visible = products.slice(0, PRODUCT_CHIPS_VISIBLE_LIMIT);
+  const hidden = products.slice(PRODUCT_CHIPS_VISIBLE_LIMIT);
+
   return (
-    <span className="flex flex-wrap items-center gap-1">
-      {products.map((product, i) => (
+    <span className="flex items-center gap-1">
+      {visible.map((product, i) => (
         <span key={product.id} className="flex items-center gap-1">
           {i > 0 ? <span className="text-muted-foreground text-xs">+</span> : null}
-          <Badge variant="secondary" className="block px-2 py-0.5 max-w-45 font-normal truncate" title={product.title}>
+          <Badge variant="secondary" className="block px-2 py-0.5 max-w-35 font-normal truncate" title={product.title}>
             {product.title}
           </Badge>
         </span>
       ))}
+      {hidden.length > 0 ? (
+        <Badge
+          variant="secondary"
+          className="px-2 py-0.5 font-normal"
+          title={hidden.map((product) => product.title).join(", ")}
+        >
+          +{hidden.length}
+        </Badge>
+      ) : null}
     </span>
   );
 }
@@ -307,8 +324,7 @@ function ViabilityCell({
     ) : (
       <span className="flex flex-col gap-1 w-full">
         <span>
-          O estoque atual monta <b>{formatters.int.format(inventory.maxBundles ?? 0)} kits</b>, e a campanha deve puxar{" "}
-          <b>{formatters.int.format(Math.round(inventory.projectedBundles))}</b> no horizonte configurado.
+          O estoque atual monta <b>{formatters.int.format(inventory.maxBundles ?? 0)} kits</b>.
         </span>
         {inventory.bottleneckTitle ? (
           <span className="text-muted-foreground">
@@ -318,7 +334,8 @@ function ViabilityCell({
         ) : null}
         {inventory.daysOfCover != null ? (
           <span className="text-muted-foreground">
-            Cobertura: {formatters.decimal.format(inventory.daysOfCover)} dias no ritmo atual.
+            Cobertura: o estoque atual dá para {formatters.decimal.format(inventory.daysOfCover)} dias, no ritmo de
+            vendas desta combinação.
           </span>
         ) : null}
       </span>
@@ -413,6 +430,100 @@ interface ExplainContext {
   campaignDays: number;
 }
 
+/** Column count of CombinationsTable's header — the expanded row spans all of them. */
+const COMBINATIONS_TABLE_COLUMNS = 9;
+
+/**
+ * 2 fixed decimals, no more, no less. The app's default decimal formatter
+ * caps at 1 decimal, which is exactly what turned a real 0.75 into a
+ * misleading "~0.8" here — this explainer exists to show the real math.
+ */
+function formatPrecise(value: number): string {
+  return value.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+/**
+ * Everything a hover tooltip only shows one field at a time, laid out
+ * together — plus the one thing no tooltip explains: where "o acaso" (the
+ * lift's baseline) actually comes from, with this combination's own numbers.
+ */
+function CombinationDetails({
+  combination,
+  formatters,
+  context,
+}: {
+  combination: Combination;
+  formatters: CombinationFormatters;
+  context: ExplainContext;
+}) {
+  const { economics: eco } = combination;
+  const { ordersAnalyzed } = context;
+
+  return (
+    <div className="flex flex-col gap-4 bg-muted/30 px-4 py-4">
+      <div>
+        <div className="mb-1.5 font-medium text-muted-foreground text-xs uppercase tracking-wide">Produtos</div>
+        <div className="flex flex-col gap-1.5">
+          {combination.products.map((product) => (
+            <div
+              key={product.id}
+              className="flex justify-between items-center gap-4 bg-card card-shadow px-3 py-2 rounded-lg"
+            >
+              <div className="min-w-0">
+                <div className="font-medium text-sm truncate">{product.title}</div>
+                <div className="text-muted-foreground text-xs">{product.category}</div>
+              </div>
+              <div className="flex items-center gap-4 text-right shrink-0">
+                <div>
+                  <div className="text-[11px] text-muted-foreground uppercase tracking-wide">Estoque</div>
+                  <div className="tabular-nums text-sm">
+                    {product.stock == null ? "—" : formatters.int.format(product.stock)}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[11px] text-muted-foreground uppercase tracking-wide">Preço médio</div>
+                  <div className="tabular-nums text-sm">
+                    {product.avgPrice == null ? "—" : formatters.money.format(product.avgPrice)}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[11px] text-muted-foreground uppercase tracking-wide">Média por pedido</div>
+                  <div className="tabular-nums text-sm">{formatPrecise(product.avgUnitsPerOrder)}</div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <div className="mb-1.5 font-medium text-muted-foreground text-xs uppercase tracking-wide">
+          Por que este lift
+        </div>
+        <div className="flex flex-col gap-1 text-sm">
+          {combination.products.map((product) => (
+            <p key={product.id} className="text-muted-foreground">
+              <span className="text-foreground">{product.title}</span> aparece em{" "}
+              {formatters.int.format(product.orderCount)} de {formatters.int.format(ordersAnalyzed)} pedidos (
+              {formatPrecise(ordersAnalyzed > 0 ? (product.orderCount / ordersAnalyzed) * 100 : 0)}%).
+            </p>
+          ))}
+          <p>
+            Se esses produtos fossem comprados sem nenhuma relação entre si, essa combinação apareceria em apenas{" "}
+            <b>~{formatPrecise(eco.expectedOrders)}</b> pedido a cada {formatters.int.format(ordersAnalyzed)}. Na
+            prática, ela apareceu em <b>{formatters.int.format(eco.coOccurrenceOrders)}</b> pedidos — exatamente{" "}
+            {formatPrecise(eco.lift)}x mais do que o esperado por acaso, indicando uma forte associação entre esses
+            produtos.
+          </p>
+          <p className="text-muted-foreground">
+            Ticket médio desses pedidos: {formatters.money.format(eco.bundleRevenue)}.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function CombinationsTable({
   combinations,
   formatters,
@@ -426,6 +537,8 @@ function CombinationsTable({
   onAskHost: (prompt: string) => void;
   onCreateBundle: (combination: Combination) => void;
 }) {
+  const [expandedKey, setExpandedKey] = useState<string | null>(null);
+
   if (combinations.length === 0) {
     return <Empty>Nenhuma combinação passou dos cortes. Os avisos no fim da página dizem o porquê.</Empty>;
   }
@@ -462,59 +575,89 @@ function CombinationsTable({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {combinations.map((combination, index) => (
-            <TableRow key={combination.products.map((p) => p.id).join("|")}>
-              <TableCell className="tabular-nums text-muted-foreground text-xs">{index + 1}</TableCell>
-              <TableCell>
-                <ProductChips products={combination.products} />
-              </TableCell>
-              <TableCell className="tabular-nums text-right">
-                {formatters.int.format(combination.supportCount)}
-              </TableCell>
-              <TableCell className="tabular-nums text-right">{formatPercentage(combination.support)}</TableCell>
-              <TableCell className="text-right">
-                <LiftCell lift={combination.economics.lift} />
-              </TableCell>
-              <TableCell className="tabular-nums text-right">
-                {combination.economics.incrementalMargin == null ? (
-                  <HoverTip
-                    className="text-muted-foreground cursor-help"
-                    content="Falta custo unitário cadastrado nas variantes. Sem custo não há margem — e zero seria uma afirmação errada."
-                  >
-                    —
-                  </HoverTip>
-                ) : (
-                  formatters.money.format(combination.economics.incrementalMargin)
-                )}
-              </TableCell>
-              <TableCell>
-                <ViabilityCell inventory={combination.inventory} formatters={formatters} />
-              </TableCell>
-              <TableCell className="text-right">
-                <ScoreCell combination={combination} formatters={formatters} />
-              </TableCell>
-              <TableCell className="text-right">
-                <ActionMenu
-                  label={`Ações para ${combinationTitle(combination)}`}
-                  trigger={<MoreHorizontal className="size-4" />}
-                  items={[
-                    {
-                      label: "Explicar",
-                      description: "Por que saem juntos e o que explorar",
-                      icon: <Sparkles className="size-4" />,
-                      onSelect: () => onAskHost(buildExplainPrompt(combination, context)),
-                    },
-                    {
-                      label: "Montar bundle",
-                      description: "Simula um kit na Shopify com estes produtos",
-                      icon: <Package className="size-4" />,
-                      onSelect: () => onCreateBundle(combination),
-                    },
-                  ]}
-                />
-              </TableCell>
-            </TableRow>
-          ))}
+          {combinations.map((combination, index) => {
+            const key = combination.products.map((p) => p.id).join("|");
+            const isExpanded = expandedKey === key;
+
+            return (
+              <Fragment key={key}>
+                <TableRow
+                  role="button"
+                  tabIndex={0}
+                  aria-expanded={isExpanded}
+                  onClick={() => setExpandedKey(isExpanded ? null : key)}
+                  onKeyDown={(event) => {
+                    if (event.key !== "Enter" && event.key !== " ") return;
+                    event.preventDefault();
+                    setExpandedKey(isExpanded ? null : key);
+                  }}
+                  className="cursor-pointer"
+                >
+                  <TableCell className="tabular-nums text-muted-foreground text-xs">
+                    <span className="inline-flex items-center gap-1">
+                      <ChevronRight className={`size-3.5 transition-transform ${isExpanded ? "rotate-90" : ""}`} />
+                      {index + 1}
+                    </span>
+                  </TableCell>
+                  <TableCell>
+                    <ProductChips products={combination.products} />
+                  </TableCell>
+                  <TableCell className="tabular-nums text-right">
+                    {formatters.int.format(combination.supportCount)}
+                  </TableCell>
+                  <TableCell className="tabular-nums text-right">{formatPercentage(combination.support)}</TableCell>
+                  <TableCell className="text-right">
+                    <LiftCell lift={combination.economics.lift} />
+                  </TableCell>
+                  <TableCell className="tabular-nums text-right">
+                    {combination.economics.incrementalMargin == null ? (
+                      <HoverTip
+                        className="text-muted-foreground cursor-help"
+                        content="Nenhum produto desta combinação tem custo por unidade cadastrado na Shopify (Produto → Custo por item) — sem custo não dá pra calcular lucro, e mostrar zero seria uma afirmação errada."
+                      >
+                        —
+                      </HoverTip>
+                    ) : (
+                      formatters.money.format(combination.economics.incrementalMargin)
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <ViabilityCell inventory={combination.inventory} formatters={formatters} />
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <ScoreCell combination={combination} formatters={formatters} />
+                  </TableCell>
+                  <TableCell className="text-right" onClick={(event) => event.stopPropagation()}>
+                    <ActionMenu
+                      label={`Ações para ${combinationTitle(combination)}`}
+                      trigger={<MoreHorizontal className="size-4" />}
+                      items={[
+                        {
+                          label: "Explicar",
+                          description: "Por que saem juntos e o que explorar",
+                          icon: <Sparkles className="size-4" />,
+                          onSelect: () => onAskHost(buildExplainPrompt(combination, context)),
+                        },
+                        {
+                          label: "Montar bundle",
+                          description: "Simula um kit na Shopify com estes produtos",
+                          icon: <Package className="size-4" />,
+                          onSelect: () => onCreateBundle(combination),
+                        },
+                      ]}
+                    />
+                  </TableCell>
+                </TableRow>
+                {isExpanded ? (
+                  <TableRow key={`${key}-details`} className="hover:bg-transparent">
+                    <TableCell colSpan={COMBINATIONS_TABLE_COLUMNS} className="p-0 whitespace-normal">
+                      <CombinationDetails combination={combination} formatters={formatters} context={context} />
+                    </TableCell>
+                  </TableRow>
+                ) : null}
+              </Fragment>
+            );
+          })}
         </TableBody>
       </Table>
     </div>
@@ -867,6 +1010,7 @@ export default function DiscoverCombinationsPage() {
   const [bundleError, setBundleError] = useState<string | null>(null);
 
   const [sortBy, setSortBy] = useState<SortKey>("score");
+  const [glossaryOpen, setGlossaryOpen] = useState(false);
 
   /**
    * Calls the tool directly on the server that serves this app.
@@ -1134,13 +1278,6 @@ export default function DiscoverCombinationsPage() {
       ) : null}
 
       <Section
-        title="Como o score é calculado"
-        description="Três perguntas, com pesos diferentes. Nenhum eixo sozinho decide: um lift altíssimo em cima de estoque zerado não vira campanha."
-      >
-        <ScoreExplainer />
-      </Section>
-
-      <Section
         title="Regras de associação"
         description="A leitura direcional das combinações, dentro do mesmo pedido. Quem leva o produto da esquerda tende a levar o da direita."
       >
@@ -1156,10 +1293,6 @@ export default function DiscoverCombinationsPage() {
         <Card>
           <SequencesTable sequences={result.sequences} formatters={formatters} />
         </Card>
-      </Section>
-
-      <Section title="Como ler estes números" description="O que cada métrica mede e onde ela engana.">
-        <Glossary />
       </Section>
 
       {result.warnings.length > 0 ? (
@@ -1179,6 +1312,36 @@ export default function DiscoverCombinationsPage() {
           </Card>
         </Section>
       ) : null}
+
+      <button
+        type="button"
+        onClick={() => setGlossaryOpen(true)}
+        aria-label="Como ler estes números"
+        className="group inline-flex right-6 bottom-6 z-3 fixed items-center bg-primary shadow-lg px-3 rounded-full h-10 text-primary-foreground text-sm"
+      >
+        <HelpCircle className="size-4 shrink-0" />
+        <span className="grid grid-cols-[0fr] group-hover:grid-cols-[1fr] ml-0 group-hover:ml-2 overflow-hidden transition-[grid-template-columns,margin-left] duration-200">
+          <span className="overflow-hidden whitespace-nowrap">Como ler estes números</span>
+        </span>
+      </button>
+
+      <Modal open={glossaryOpen} onClose={() => setGlossaryOpen(false)} title="Como ler estes números">
+        <div className="flex flex-col gap-6">
+          <div className="flex flex-col gap-2">
+            <h3 className="font-medium text-sm">Como o score é calculado</h3>
+            <p className="text-muted-foreground text-xs leading-relaxed">
+              Três perguntas, com pesos diferentes. Nenhum eixo sozinho decide: um lift altíssimo em cima de estoque
+              zerado não vira campanha.
+            </p>
+            <ScoreExplainer />
+          </div>
+          <div className="flex flex-col gap-2">
+            <h3 className="font-medium text-sm">Glossário</h3>
+            <p className="text-muted-foreground text-xs leading-relaxed">O que cada métrica mede e onde ela engana.</p>
+            <Glossary />
+          </div>
+        </div>
+      </Modal>
     </Page>
   );
 }
