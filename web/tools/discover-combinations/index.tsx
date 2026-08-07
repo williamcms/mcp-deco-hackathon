@@ -10,16 +10,8 @@ import {
 	TrendingUp,
 	Users,
 } from "lucide-react";
-import type { ReactNode } from "react";
-import { useMemo } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge.tsx";
-import { Button } from "@/components/ui/button.tsx";
-import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuItem,
-	DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu.tsx";
 import {
 	Table,
 	TableBody,
@@ -28,26 +20,23 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table.tsx";
-import {
-	Tooltip,
-	TooltipContent,
-	TooltipProvider,
-	TooltipTrigger,
-} from "@/components/ui/tooltip.tsx";
 import { useMcpApp, useMcpHostContext, useMcpState } from "@/context.tsx";
 import type {
 	DiscoverCombinationsInput,
 	DiscoverCombinationsOutput,
 } from "../../../api/tools/discover-combinations.ts";
 import { buildExplainPrompt, combinationTitle } from "./explain-prompt.ts";
+import { ActionMenu, HoverTip } from "./floating.tsx";
 import { METRICS, type MetricKey } from "./metrics-copy.ts";
 
 type Combination = DiscoverCombinationsOutput["combinations"][number];
 type Rule = DiscoverCombinationsOutput["rules"][number];
 type Sequence = DiscoverCombinationsOutput["sequences"][number];
 type ViabilityLevel = Combination["inventory"]["level"];
+type Formatters = ReturnType<typeof useFormatters>;
 
 const PERIODS = [7, 30, 60] as const;
+const TOOL_NAME = "discover_combinations";
 
 /** Espelha SCORE_WEIGHTS e LIFT_CEILING do motor, só para rotular a conta. */
 const SCORE_WEIGHTS = { lift: 40, margin: 40, inventory: 20 } as const;
@@ -94,9 +83,9 @@ const VIABILITY_LABEL: Record<ViabilityLevel, string> = {
 };
 
 const VIABILITY_CLASS: Record<ViabilityLevel, string> = {
-	high: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400",
-	medium: "bg-amber-500/15 text-amber-700 dark:text-amber-400",
-	low: "bg-red-500/15 text-red-700 dark:text-red-400",
+	high: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
+	medium: "bg-amber-500/15 text-amber-600 dark:text-amber-400",
+	low: "bg-red-500/15 text-red-600 dark:text-red-400",
 	unknown: "bg-muted text-muted-foreground",
 };
 
@@ -119,12 +108,10 @@ function Page({ children }: { children: ReactNode }) {
 function Section({
 	title,
 	description,
-	action,
 	children,
 }: {
 	title?: string;
 	description?: string;
-	action?: ReactNode;
 	children: ReactNode;
 }) {
 	return (
@@ -139,7 +126,6 @@ function Section({
 							</p>
 						) : null}
 					</div>
-					{action ? <div className="shrink-0">{action}</div> : null}
 				</div>
 			) : null}
 			{children}
@@ -180,7 +166,7 @@ function Row({
 }) {
 	return (
 		<div>
-			{first ? null : <div className="h-px bg-border mx-5" />}
+			{first ? null : <div className="h-px bg-border/60 mx-5" />}
 			<div className="flex items-center gap-3 px-4 py-4">
 				{icon ? (
 					<div className="size-8 shrink-0 rounded-lg bg-muted/60 flex items-center justify-center text-muted-foreground">
@@ -201,51 +187,84 @@ function Row({
 	);
 }
 
-function Alert({ icon, children }: { icon: ReactNode; children: ReactNode }) {
+function Alert({
+	icon,
+	tone = "neutral",
+	children,
+}: {
+	icon: ReactNode;
+	tone?: "neutral" | "danger";
+	children: ReactNode;
+}) {
 	return (
 		<div
-			data-slot="alert"
 			role="alert"
-			className="relative w-full rounded-lg border px-4 py-3 text-sm flex gap-3 items-center bg-card text-card-foreground border-border"
+			className={`relative w-full rounded-lg px-4 py-3 text-sm flex gap-3 items-center bg-card card-shadow ${
+				tone === "danger" ? "text-destructive" : "text-muted-foreground"
+			}`}
 		>
-			<span className="shrink-0 text-muted-foreground">{icon}</span>
-			<div className="text-muted-foreground flex-1 text-sm">{children}</div>
+			<span className="shrink-0">{icon}</span>
+			<div className="flex-1 text-sm leading-relaxed">{children}</div>
 		</div>
+	);
+}
+
+/** Botão pequeno no padrão do Studio (h-7). */
+function SmallButton({
+	children,
+	onClick,
+	active = false,
+	disabled = false,
+	variant = "outline",
+}: {
+	children: ReactNode;
+	onClick: () => void;
+	active?: boolean;
+	disabled?: boolean;
+	variant?: "outline" | "ghost";
+}) {
+	const base =
+		"inline-flex items-center justify-center whitespace-nowrap rounded-lg h-7 px-2.5 text-xs gap-1.5 transition-all outline-none focus-visible:ring-2 focus-visible:ring-ring/30 disabled:pointer-events-none disabled:opacity-50";
+
+	const tone = active
+		? "bg-primary text-primary-foreground"
+		: variant === "outline"
+			? "card-shadow bg-background hover:bg-accent hover:text-accent-foreground"
+			: "hover:bg-accent hover:text-accent-foreground";
+
+	return (
+		<button
+			type="button"
+			onClick={onClick}
+			disabled={disabled}
+			className={`${base} ${tone}`}
+		>
+			{children}
+		</button>
 	);
 }
 
 /** Ícone de ajuda que abre a explicação da métrica. */
 function InfoTip({
 	metric,
-	children,
+	content,
 }: {
 	metric?: MetricKey;
-	children?: ReactNode;
+	content?: ReactNode;
 }) {
+	const body =
+		content ??
+		(metric ? (
+			<span className="flex flex-col gap-1">
+				<span className="font-medium">{METRICS[metric].label}</span>
+				<span className="text-muted-foreground">{METRICS[metric].short}</span>
+			</span>
+		) : null);
+
 	return (
-		<Tooltip>
-			<TooltipTrigger asChild>
-				<button
-					type="button"
-					className="inline-flex items-center text-muted-foreground/70 hover:text-foreground transition-colors align-middle"
-					aria-label="O que é isto?"
-				>
-					<Info className="size-3.5" />
-				</button>
-			</TooltipTrigger>
-			<TooltipContent className="max-w-[280px] text-left" side="top">
-				{children ?? (
-					<span className="flex flex-col gap-1">
-						<span className="font-medium">
-							{METRICS[metric as MetricKey].label}
-						</span>
-						<span className="opacity-90">
-							{METRICS[metric as MetricKey].short}
-						</span>
-					</span>
-				)}
-			</TooltipContent>
-		</Tooltip>
+		<HoverTip content={body} className="inline-flex cursor-help align-middle">
+			<Info className="size-3.5 text-muted-foreground/70" />
+		</HoverTip>
 	);
 }
 
@@ -327,10 +346,10 @@ function ProductChips({
 function LiftCell({ lift }: { lift: number }) {
 	const tone =
 		lift < 1.1
-			? "text-muted-foreground border-border"
+			? "text-muted-foreground"
 			: lift >= 1.5
-				? "border-emerald-500/40 text-emerald-700 dark:text-emerald-400"
-				: "border-amber-500/40 text-amber-700 dark:text-amber-400";
+				? "border-emerald-500/40 text-emerald-600 dark:text-emerald-400"
+				: "border-amber-500/40 text-amber-600 dark:text-amber-400";
 
 	const reading =
 		lift < 1.1
@@ -338,19 +357,19 @@ function LiftCell({ lift }: { lift: number }) {
 			: `Aparece ${liftLabel(lift)} mais do que apareceria por acaso.`;
 
 	return (
-		<Tooltip>
-			<TooltipTrigger asChild>
-				<Badge variant="outline" className={`px-2 py-0.5 cursor-help ${tone}`}>
-					{liftLabel(lift)}
-				</Badge>
-			</TooltipTrigger>
-			<TooltipContent className="max-w-[260px] text-left">
+		<HoverTip
+			className="inline-flex cursor-help"
+			content={
 				<span className="flex flex-col gap-1">
 					<span className="font-medium">{reading}</span>
-					<span className="opacity-80">Ponto neutro: 1,0x.</span>
+					<span className="text-muted-foreground">Ponto neutro: 1,0x.</span>
 				</span>
-			</TooltipContent>
-		</Tooltip>
+			}
+		>
+			<Badge variant="outline" className={`px-2 py-0.5 ${tone}`}>
+				{liftLabel(lift)}
+			</Badge>
+		</HoverTip>
 	);
 }
 
@@ -359,64 +378,56 @@ function ViabilityCell({
 	formatters,
 }: {
 	inventory: Combination["inventory"];
-	formatters: ReturnType<typeof useFormatters>;
+	formatters: Formatters;
 }) {
+	const detail =
+		inventory.level === "unknown" ? (
+			<span>
+				Algum produto da combinação está sem estoque informado. Isso é falta de
+				dado, não estoque zerado.
+			</span>
+		) : (
+			<span className="flex flex-col gap-1">
+				<span>
+					O estoque atual monta{" "}
+					<b>{formatters.int.format(inventory.maxBundles ?? 0)} kits</b>, e a
+					campanha deve puxar{" "}
+					<b>{formatters.int.format(Math.round(inventory.projectedBundles))}</b>{" "}
+					no horizonte configurado.
+				</span>
+				{inventory.bottleneckTitle ? (
+					<span className="text-muted-foreground">
+						Gargalo: {inventory.bottleneckTitle}
+						{inventory.bottleneckStock != null
+							? ` (${formatters.int.format(inventory.bottleneckStock)} un.)`
+							: ""}
+					</span>
+				) : null}
+				{inventory.daysOfCover != null ? (
+					<span className="text-muted-foreground">
+						Cobertura: {formatters.decimal.format(inventory.daysOfCover)} dias
+						no ritmo atual.
+					</span>
+				) : null}
+			</span>
+		);
+
 	return (
-		<Tooltip>
-			<TooltipTrigger asChild>
-				<span className="inline-flex flex-col items-start gap-0.5 cursor-help">
-					<Badge
-						variant="secondary"
-						className={`px-2 py-0.5 ${VIABILITY_CLASS[inventory.level]}`}
-					>
-						{VIABILITY_LABEL[inventory.level]}
-					</Badge>
-					{inventory.maxBundles != null ? (
-						<span className="text-[11px] text-muted-foreground tabular-nums">
-							{formatters.int.format(inventory.maxBundles)} kits
-						</span>
-					) : null}
-				</span>
-			</TooltipTrigger>
-			<TooltipContent className="max-w-[280px] text-left">
-				<span className="flex flex-col gap-1.5">
-					{inventory.level === "unknown" ? (
-						<span>
-							Algum produto da combinação está sem estoque informado. Isso é
-							falta de dado, não estoque zerado.
-						</span>
-					) : (
-						<>
-							<span>
-								O estoque atual monta{" "}
-								<b>{formatters.int.format(inventory.maxBundles ?? 0)} kits</b>,
-								e a campanha deve puxar{" "}
-								<b>
-									{formatters.int.format(
-										Math.round(inventory.projectedBundles),
-									)}
-								</b>{" "}
-								no horizonte configurado.
-							</span>
-							{inventory.bottleneckTitle ? (
-								<span className="opacity-80">
-									Gargalo: {inventory.bottleneckTitle}
-									{inventory.bottleneckStock != null
-										? ` (${formatters.int.format(inventory.bottleneckStock)} un.)`
-										: ""}
-								</span>
-							) : null}
-							{inventory.daysOfCover != null ? (
-								<span className="opacity-80">
-									Cobertura: {formatters.decimal.format(inventory.daysOfCover)}{" "}
-									dias no ritmo atual.
-								</span>
-							) : null}
-						</>
-					)}
-				</span>
-			</TooltipContent>
-		</Tooltip>
+		<HoverTip className="inline-flex cursor-help" content={detail}>
+			<span className="inline-flex flex-col items-start gap-0.5">
+				<Badge
+					variant="secondary"
+					className={`px-2 py-0.5 ${VIABILITY_CLASS[inventory.level]}`}
+				>
+					{VIABILITY_LABEL[inventory.level]}
+				</Badge>
+				{inventory.maxBundles != null ? (
+					<span className="text-[11px] text-muted-foreground tabular-nums">
+						{formatters.int.format(inventory.maxBundles)} kits
+					</span>
+				) : null}
+			</span>
+		</HoverTip>
 	);
 }
 
@@ -426,7 +437,7 @@ function ScoreCell({
 	formatters,
 }: {
 	combination: Combination;
-	formatters: ReturnType<typeof useFormatters>;
+	formatters: Formatters;
 }) {
 	const { scoreBreakdown: parts, score } = combination;
 
@@ -437,34 +448,18 @@ function ScoreCell({
 	];
 
 	return (
-		<Tooltip>
-			<TooltipTrigger asChild>
-				<span className="inline-flex flex-col items-end gap-1 cursor-help">
-					<span className="text-sm font-medium tabular-nums">{score}</span>
-					<span className="flex h-1.5 w-16 overflow-hidden rounded-full bg-muted">
-						{segments.map((segment) => (
-							<span
-								key={segment.key}
-								style={{
-									width: `${segment.value}%`,
-									backgroundColor: SCORE_COLORS[segment.key],
-								}}
-							/>
-						))}
-					</span>
-				</span>
-			</TooltipTrigger>
-			<TooltipContent className="max-w-[300px] text-left">
+		<HoverTip
+			className="inline-flex cursor-help"
+			content={
 				<span className="flex flex-col gap-2">
 					<span className="font-medium">Como este score foi calculado</span>
-
 					<span className="flex flex-col gap-1">
 						{segments.map((segment) => (
 							<span
 								key={segment.key}
 								className="flex items-center justify-between gap-4"
 							>
-								<span className="flex items-center gap-1.5 opacity-90">
+								<span className="flex items-center gap-1.5 text-muted-foreground">
 									<span
 										className="size-2 rounded-[2px] shrink-0"
 										style={{ backgroundColor: SCORE_COLORS[segment.key] }}
@@ -478,58 +473,30 @@ function ScoreCell({
 							</span>
 						))}
 					</span>
-
-					<span className="flex items-center justify-between gap-4 border-t border-background/20 pt-1.5">
+					<span className="flex items-center justify-between gap-4 border-t border-border pt-1.5">
 						<span className="font-medium">Total</span>
 						<span className="tabular-nums font-mono font-medium">
 							{score} / 100
 						</span>
 					</span>
 				</span>
-			</TooltipContent>
-		</Tooltip>
-	);
-}
-
-/**
- * Ações por combinação. "Explicar" devolve a pergunta ao host: o modelo tem o
- * contexto da loja que esta tela não tem, então ele argumenta sobre o caso em
- * vez de a interface tentar adivinhar um texto pronto.
- */
-function CombinationActions({
-	combination,
-	context,
-	onExplain,
-}: {
-	combination: Combination;
-	context: { periodDays: number; ordersAnalyzed: number; campaignDays: number };
-	onExplain: (prompt: string) => void;
-}) {
-	return (
-		<DropdownMenu>
-			<DropdownMenuTrigger asChild>
-				<Button
-					variant="ghost"
-					className="size-7 p-0"
-					aria-label={`Ações para ${combinationTitle(combination)}`}
-				>
-					<MoreHorizontal className="size-4" />
-				</Button>
-			</DropdownMenuTrigger>
-			<DropdownMenuContent align="end" className="w-56">
-				<DropdownMenuItem
-					onClick={() => onExplain(buildExplainPrompt(combination, context))}
-				>
-					<Sparkles className="size-4" />
-					<span className="flex flex-col gap-0.5">
-						<span>Explicar</span>
-						<span className="text-xs text-muted-foreground">
-							Por que saem juntos e o que explorar
-						</span>
-					</span>
-				</DropdownMenuItem>
-			</DropdownMenuContent>
-		</DropdownMenu>
+			}
+		>
+			<span className="inline-flex flex-col items-end gap-1">
+				<span className="text-sm font-medium tabular-nums">{score}</span>
+				<span className="flex h-1.5 w-16 overflow-hidden rounded-full bg-muted">
+					{segments.map((segment) => (
+						<span
+							key={segment.key}
+							style={{
+								width: `${segment.value}%`,
+								backgroundColor: SCORE_COLORS[segment.key],
+							}}
+						/>
+					))}
+				</span>
+			</span>
+		</HoverTip>
 	);
 }
 
@@ -545,6 +512,12 @@ function Empty({ children }: { children: ReactNode }) {
 	);
 }
 
+interface ExplainContext {
+	periodDays: number;
+	ordersAnalyzed: number;
+	campaignDays: number;
+}
+
 function CombinationsTable({
 	combinations,
 	formatters,
@@ -552,8 +525,8 @@ function CombinationsTable({
 	onExplain,
 }: {
 	combinations: Combination[];
-	formatters: ReturnType<typeof useFormatters>;
-	context: { periodDays: number; ordersAnalyzed: number; campaignDays: number };
+	formatters: Formatters;
+	context: ExplainContext;
 	onExplain: (prompt: string) => void;
 }) {
 	if (combinations.length === 0) {
@@ -575,12 +548,7 @@ function CombinationsTable({
 						<TableHead className="text-xs text-right">
 							<span className="inline-flex items-center gap-1 justify-end w-full">
 								Pedidos
-								<InfoTip>
-									<span>
-										Quantos pedidos da janela levaram todos os produtos desta
-										combinação juntos.
-									</span>
-								</InfoTip>
+								<InfoTip content="Quantos pedidos da janela levaram todos os produtos desta combinação juntos." />
 							</span>
 						</TableHead>
 						<TableHead className="text-xs text-right">
@@ -621,17 +589,12 @@ function CombinationsTable({
 							</TableCell>
 							<TableCell className="text-right tabular-nums">
 								{combination.economics.incrementalMargin == null ? (
-									<Tooltip>
-										<TooltipTrigger asChild>
-											<span className="text-muted-foreground cursor-help">
-												—
-											</span>
-										</TooltipTrigger>
-										<TooltipContent className="max-w-[260px] text-left">
-											Falta custo unitário cadastrado nas variantes. Sem custo
-											não há margem — e zero seria uma afirmação errada.
-										</TooltipContent>
-									</Tooltip>
+									<HoverTip
+										className="cursor-help text-muted-foreground"
+										content="Falta custo unitário cadastrado nas variantes. Sem custo não há margem — e zero seria uma afirmação errada."
+									>
+										—
+									</HoverTip>
 								) : (
 									formatters.money.format(
 										combination.economics.incrementalMargin,
@@ -648,10 +611,18 @@ function CombinationsTable({
 								<ScoreCell combination={combination} formatters={formatters} />
 							</TableCell>
 							<TableCell className="text-right">
-								<CombinationActions
-									combination={combination}
-									context={context}
-									onExplain={onExplain}
+								<ActionMenu
+									label={`Ações para ${combinationTitle(combination)}`}
+									trigger={<MoreHorizontal className="size-4" />}
+									items={[
+										{
+											label: "Explicar",
+											description: "Por que saem juntos e o que explorar",
+											icon: <Sparkles className="size-4" />,
+											onSelect: () =>
+												onExplain(buildExplainPrompt(combination, context)),
+										},
+									]}
 								/>
 							</TableCell>
 						</TableRow>
@@ -667,7 +638,7 @@ function RulesTable({
 	formatters,
 }: {
 	rules: Rule[];
-	formatters: ReturnType<typeof useFormatters>;
+	formatters: Formatters;
 }) {
 	if (rules.length === 0) {
 		return <Empty>Nenhuma regra passou dos cortes de confiança e lift.</Empty>;
@@ -706,16 +677,12 @@ function RulesTable({
 								<ProductChips products={rule.consequent} />
 							</TableCell>
 							<TableCell className="text-right tabular-nums">
-								<Tooltip>
-									<TooltipTrigger asChild>
-										<span className="cursor-help">{pct(rule.confidence)}</span>
-									</TooltipTrigger>
-									<TooltipContent className="max-w-[260px] text-left">
-										{pct(rule.confidence)} de quem levou o primeiro também levou
-										o segundo, em {formatters.int.format(rule.supportCount)}{" "}
-										{rule.supportCount === 1 ? "pedido" : "pedidos"}.
-									</TooltipContent>
-								</Tooltip>
+								<HoverTip
+									className="cursor-help"
+									content={`${pct(rule.confidence)} de quem levou o primeiro também levou o segundo, em ${formatters.int.format(rule.supportCount)} ${rule.supportCount === 1 ? "pedido" : "pedidos"}.`}
+								>
+									{pct(rule.confidence)}
+								</HoverTip>
 							</TableCell>
 							<TableCell className="text-right">
 								<LiftCell lift={rule.lift} />
@@ -733,7 +700,7 @@ function SequencesTable({
 	formatters,
 }: {
 	sequences: Sequence[];
-	formatters: ReturnType<typeof useFormatters>;
+	formatters: Formatters;
 }) {
 	if (sequences.length === 0) {
 		return (
@@ -755,23 +722,13 @@ function SequencesTable({
 						<TableHead className="text-xs text-right">
 							<span className="inline-flex items-center gap-1 justify-end w-full">
 								Clientes
-								<InfoTip>
-									<span>
-										Quantos clientes fizeram essa transição, sobre quantos
-										compraram o primeiro produto e tiveram janela para voltar.
-									</span>
-								</InfoTip>
+								<InfoTip content="Quantos clientes fizeram essa transição, sobre quantos compraram o primeiro produto e tiveram janela para voltar." />
 							</span>
 						</TableHead>
 						<TableHead className="text-xs text-right">
 							<span className="inline-flex items-center gap-1 justify-end w-full">
 								Tempo típico
-								<InfoTip>
-									<span>
-										Mediana de dias entre as duas compras. Mediana, não média,
-										para um cliente que demorou meses não distorcer o número.
-									</span>
-								</InfoTip>
+								<InfoTip content="Mediana de dias entre as duas compras. Mediana, não média, para um cliente que demorou meses não distorcer o número." />
 							</span>
 						</TableHead>
 					</TableRow>
@@ -810,7 +767,7 @@ function SequencesTable({
 }
 
 // ---------------------------------------------------------------------------
-// Explicação do score
+// Explicação do score e glossário
 // ---------------------------------------------------------------------------
 
 function ScoreExplainer() {
@@ -909,6 +866,30 @@ function Glossary() {
 // Página
 // ---------------------------------------------------------------------------
 
+function Spinner({ label }: { label: string }) {
+	return (
+		<div className="flex items-center gap-3 text-muted-foreground py-16 justify-center">
+			<span className="w-4 h-4 border-2 border-muted border-t-primary rounded-full animate-spin" />
+			<span className="text-sm">{label}</span>
+		</div>
+	);
+}
+
+/** Extrai a mensagem de erro de um CallToolResult que veio com isError. */
+function errorTextOf(result: { content?: unknown }): string {
+	const content = Array.isArray(result.content) ? result.content : [];
+	for (const block of content) {
+		if (
+			typeof block === "object" &&
+			block !== null &&
+			(block as { type?: string }).type === "text"
+		) {
+			return String((block as { text?: string }).text ?? "");
+		}
+	}
+	return "A tool retornou um erro sem mensagem.";
+}
+
 export default function DiscoverCombinationsPage() {
 	const state = useMcpState<
 		DiscoverCombinationsInput,
@@ -919,22 +900,49 @@ export default function DiscoverCombinationsPage() {
 	const isFullscreen = hostContext?.displayMode === "fullscreen";
 	const formatters = useFormatters();
 
-	function requestPeriod(days: number) {
-		app?.sendMessage({
-			role: "user",
-			content: [
-				{
-					type: "text",
-					text: `Rode a tool discover_combinations com periodDays igual a ${days}.`,
-				},
-			],
-		});
-	}
+	// Resultado de uma re-execução disparada pela própria tela. Sobrepõe o
+	// resultado que veio do host até a próxima chamada da tool.
+	const [override, setOverride] = useState<DiscoverCombinationsOutput | null>(
+		null,
+	);
+	const [runningDays, setRunningDays] = useState<number | null>(null);
+	const [runError, setRunError] = useState<string | null>(null);
 
-	async function toggleDisplayMode() {
-		await app?.requestDisplayMode({
-			mode: isFullscreen ? "inline" : "fullscreen",
-		});
+	/**
+	 * Chama a tool direto no servidor que serve esta app.
+	 *
+	 * A primeira versão pedia ao modelo, por mensagem no chat, para rodar a
+	 * tool de novo — e o agente respondia que não conhecia `discover_combinations`,
+	 * porque depende de a conexão estar publicada para ele. `callServerTool` não
+	 * passa pelo agente: fala com o mesmo servidor que já serve esta interface.
+	 */
+	async function runFor(days: number) {
+		if (!app || runningDays !== null) return;
+
+		setRunningDays(days);
+		setRunError(null);
+
+		try {
+			const response = await app.callServerTool({
+				name: TOOL_NAME,
+				arguments: { periodDays: days },
+			});
+
+			if (response.isError) throw new Error(errorTextOf(response));
+
+			const structured = response.structuredContent as
+				| DiscoverCombinationsOutput
+				| undefined;
+			if (!structured) {
+				throw new Error("A tool respondeu sem conteúdo estruturado.");
+			}
+
+			setOverride(structured);
+		} catch (error) {
+			setRunError(error instanceof Error ? error.message : String(error));
+		} finally {
+			setRunningDays(null);
+		}
 	}
 
 	function askHost(prompt: string) {
@@ -944,25 +952,64 @@ export default function DiscoverCombinationsPage() {
 		});
 	}
 
-	if (state.status === "initializing" || state.status === "tool-input") {
-		return (
-			<Page>
-				<div className="flex items-center gap-3 text-muted-foreground py-16 justify-center">
-					<span className="w-4 h-4 border-2 border-muted border-t-primary rounded-full animate-spin" />
-					<span className="text-sm">
-						{state.status === "initializing"
-							? "Conectando ao host..."
-							: "Minerando combinações..."}
-					</span>
-				</div>
-			</Page>
-		);
+	async function toggleDisplayMode() {
+		await app?.requestDisplayMode({
+			mode: isFullscreen ? "inline" : "fullscreen",
+		});
 	}
 
-	if (state.status === "connected") {
+	const result = override ?? state.toolResult;
+
+	if (!result) {
+		if (state.status === "initializing" || state.status === "tool-input") {
+			return (
+				<Page>
+					<Spinner
+						label={
+							state.status === "initializing"
+								? "Conectando ao host..."
+								: "Minerando combinações..."
+						}
+					/>
+				</Page>
+			);
+		}
+
+		if (state.status === "error") {
+			return (
+				<Page>
+					<div className="text-xl font-medium">Descoberta de combinações</div>
+					<Card>
+						<Row
+							first
+							icon={<AlertTriangle className="size-4 text-destructive" />}
+							title="Falha na análise"
+							description={
+								<>
+									<span className="block text-destructive whitespace-pre-wrap">
+										{state.error ?? "Erro desconhecido"}
+									</span>
+									<span className="block mt-1">
+										Confira o domínio da loja, o access token e os escopos
+										read_orders, read_products, read_inventory e read_customers.
+									</span>
+								</>
+							}
+						/>
+					</Card>
+				</Page>
+			);
+		}
+
+		// Conectado, cancelado ou sem resultado: dá para rodar a análise daqui.
 		return (
 			<Page>
 				<div className="text-xl font-medium">Descoberta de combinações</div>
+				{runError ? (
+					<Alert icon={<AlertTriangle className="size-4" />} tone="danger">
+						{runError}
+					</Alert>
+				) : null}
 				<Card>
 					<Row
 						first
@@ -972,66 +1019,18 @@ export default function DiscoverCombinationsPage() {
 						right={
 							<div className="flex items-center gap-1.5">
 								{PERIODS.map((days) => (
-									<Button
+									<SmallButton
 										key={days}
-										variant="outline"
-										className="h-7 gap-1.5 px-2.5 text-xs"
-										onClick={() => requestPeriod(days)}
+										onClick={() => runFor(days)}
+										disabled={runningDays !== null}
 									>
-										{days} dias
-									</Button>
+										{runningDays === days ? "Rodando..." : `${days} dias`}
+									</SmallButton>
 								))}
 							</div>
 						}
 					/>
 				</Card>
-			</Page>
-		);
-	}
-
-	if (state.status === "tool-cancelled") {
-		return (
-			<Page>
-				<Alert icon={<AlertTriangle className="size-4" />}>
-					Análise cancelada.
-				</Alert>
-			</Page>
-		);
-	}
-
-	if (state.status === "error") {
-		return (
-			<Page>
-				<div className="text-xl font-medium">Descoberta de combinações</div>
-				<Card className="border border-destructive/40">
-					<Row
-						first
-						icon={<AlertTriangle className="size-4" />}
-						title="Falha na análise"
-						description={
-							<>
-								<span className="block text-destructive whitespace-pre-wrap">
-									{state.error ?? "Erro desconhecido"}
-								</span>
-								<span className="block mt-1">
-									Confira o domínio da loja, o access token e os escopos
-									read_orders, read_products, read_inventory e read_customers.
-								</span>
-							</>
-						}
-					/>
-				</Card>
-			</Page>
-		);
-	}
-
-	const result = state.toolResult;
-	if (!result) {
-		return (
-			<Page>
-				<Alert icon={<Info className="size-4" />}>
-					Aguardando resultado...
-				</Alert>
 			</Page>
 		);
 	}
@@ -1050,156 +1049,156 @@ export default function DiscoverCombinationsPage() {
 			: 0;
 
 	return (
-		<TooltipProvider delayDuration={150}>
-			<Page>
-				<div className="flex flex-wrap items-center justify-between gap-3">
-					<div className="text-xl font-medium min-w-0">
-						Descoberta de combinações
-					</div>
-					<div className="flex items-center gap-1.5">
-						{PERIODS.map((days) => (
-							<Button
-								key={days}
-								variant={period.days === days ? "default" : "outline"}
-								className="h-7 gap-1.5 px-2.5 text-xs"
-								onClick={() => requestPeriod(days)}
-							>
-								{days} dias
-							</Button>
-						))}
-						<Button
-							variant="ghost"
-							className="h-7 gap-1.5 px-2.5 text-xs"
-							onClick={toggleDisplayMode}
-						>
-							{isFullscreen ? "Reduzir" : "Expandir"}
-						</Button>
-					</div>
+		<Page>
+			<div className="flex flex-wrap items-center justify-between gap-3">
+				<div className="text-xl font-medium min-w-0">
+					Descoberta de combinações
 				</div>
+				<div className="flex items-center gap-1.5">
+					{PERIODS.map((days) => (
+						<SmallButton
+							key={days}
+							active={period.days === days}
+							disabled={runningDays !== null}
+							onClick={() => runFor(days)}
+						>
+							{runningDays === days ? "..." : `${days} dias`}
+						</SmallButton>
+					))}
+					<SmallButton variant="ghost" onClick={toggleDisplayMode}>
+						{isFullscreen ? "Reduzir" : "Expandir"}
+					</SmallButton>
+				</div>
+			</div>
 
-				<Alert icon={<Layers className="size-4" />}>
-					<span>
-						{formatters.int.format(summary.ordersAnalyzed)} pedidos dos últimos{" "}
-						{period.days} dias, minerados com{" "}
-						<b className="text-foreground">{result.engine}</b>. Uma combinação
-						só entra se aparecer em pelo menos{" "}
-						<b className="text-foreground">
-							{thresholds.minSupportCount}{" "}
-							{thresholds.minSupportCount === 1 ? "pedido" : "pedidos"}
-						</b>
-						, e o estoque é medido contra uma campanha de {period.campaignDays}{" "}
-						dias.
-					</span>
+			{runError ? (
+				<Alert icon={<AlertTriangle className="size-4" />} tone="danger">
+					{runError}
 				</Alert>
+			) : null}
 
-				<Section>
-					<div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
-						<Kpi
-							icon={<Layers className="size-3.5" />}
-							label="Combinações"
-							value={formatters.int.format(summary.combinationsFound)}
-							hint={
-								best
-									? `A melhor tem score ${best.score} e lift ${liftLabel(best.economics.lift)}.`
-									: "Nenhuma passou dos cortes configurados."
-							}
-						/>
-						<Kpi
-							icon={<Coins className="size-3.5" />}
-							label="Margem incremental"
-							value={formatters.money.format(totalIncremental)}
-							hint="Soma das combinações listadas, já descontado o que o acaso explicaria."
-						/>
-						<Kpi
-							icon={<Package className="size-3.5" />}
-							label="Pedidos com 2+ itens"
-							value={pct(attachRate)}
-							hint={`${formatters.int.format(summary.multiItemOrders)} de ${formatters.int.format(summary.ordersAnalyzed)} — só esses podem formar combinação.`}
-						/>
-						<Kpi
-							icon={<Users className="size-3.5" />}
-							label="Clientes recorrentes"
-							value={formatters.int.format(summary.customersAnalyzed)}
-							hint={`${formatters.int.format(summary.sequencesFound)} ${summary.sequencesFound === 1 ? "sequência" : "sequências"} de recompra encontradas.`}
-						/>
-					</div>
-				</Section>
+			<Alert icon={<Layers className="size-4" />}>
+				{formatters.int.format(summary.ordersAnalyzed)} pedidos dos últimos{" "}
+				{period.days} dias, minerados com{" "}
+				<b className="text-foreground">{result.engine}</b>. Uma combinação só
+				entra se aparecer em pelo menos{" "}
+				<b className="text-foreground">
+					{thresholds.minSupportCount}{" "}
+					{thresholds.minSupportCount === 1 ? "pedido" : "pedidos"}
+				</b>
+				, e o estoque é medido contra uma campanha de {period.campaignDays}{" "}
+				dias.
+			</Alert>
 
+			<Section>
+				<div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
+					<Kpi
+						icon={<Layers className="size-3.5" />}
+						label="Combinações"
+						value={formatters.int.format(summary.combinationsFound)}
+						hint={
+							best
+								? `A melhor tem score ${best.score} e lift ${liftLabel(best.economics.lift)}.`
+								: "Nenhuma passou dos cortes configurados."
+						}
+					/>
+					<Kpi
+						icon={<Coins className="size-3.5" />}
+						label="Margem incremental"
+						value={formatters.money.format(totalIncremental)}
+						hint="Soma das combinações listadas, já descontado o que o acaso explicaria."
+					/>
+					<Kpi
+						icon={<Package className="size-3.5" />}
+						label="Pedidos com 2+ itens"
+						value={pct(attachRate)}
+						hint={`${formatters.int.format(summary.multiItemOrders)} de ${formatters.int.format(summary.ordersAnalyzed)} — só esses podem formar combinação.`}
+					/>
+					<Kpi
+						icon={<Users className="size-3.5" />}
+						label="Clientes recorrentes"
+						value={formatters.int.format(summary.customersAnalyzed)}
+						hint={`${formatters.int.format(summary.sequencesFound)} ${summary.sequencesFound === 1 ? "sequência" : "sequências"} de recompra encontradas.`}
+					/>
+				</div>
+			</Section>
+
+			<Section
+				title="Combinações rankeadas"
+				description="Produtos que saem juntos no mesmo pedido, ordenados pelo score. Passe o mouse em qualquer número para entender o que ele significa, ou use o menu da linha para pedir uma explicação."
+			>
+				<Card>
+					<CombinationsTable
+						combinations={result.combinations}
+						formatters={formatters}
+						context={{
+							periodDays: period.days,
+							ordersAnalyzed: summary.ordersAnalyzed,
+							campaignDays: period.campaignDays,
+						}}
+						onExplain={askHost}
+					/>
+				</Card>
+			</Section>
+
+			<Section
+				title="Como o score é calculado"
+				description="Três perguntas, com pesos diferentes. Nenhum eixo sozinho decide: um lift altíssimo em cima de estoque zerado não vira campanha."
+			>
+				<ScoreExplainer />
+			</Section>
+
+			<Section
+				title="Regras de associação"
+				description="A leitura direcional das combinações, dentro do mesmo pedido. Quem leva o produto da esquerda tende a levar o da direita."
+			>
+				<Card>
+					<RulesTable rules={result.rules} formatters={formatters} />
+				</Card>
+			</Section>
+
+			<Section
+				title="Sequência de compra"
+				description="O que o cliente volta para comprar em um pedido seguinte, e quanto tempo costuma levar. É gatilho de recompra, não kit."
+			>
+				<Card>
+					<SequencesTable
+						sequences={result.sequences}
+						formatters={formatters}
+					/>
+				</Card>
+			</Section>
+
+			<Section
+				title="Como ler estes números"
+				description="O que cada métrica mede e onde ela engana."
+			>
+				<Glossary />
+			</Section>
+
+			{result.warnings.length > 0 ? (
 				<Section
-					title="Combinações rankeadas"
-					description="Produtos que saem juntos no mesmo pedido, ordenados pelo score. Passe o mouse em qualquer número para entender o que ele significa, ou use o menu da linha para pedir uma explicação."
+					title={`Avisos (${result.warnings.length})`}
+					description="Limites da análise que afetam como estes números devem ser lidos."
 				>
 					<Card>
-						<CombinationsTable
-							combinations={result.combinations}
-							formatters={formatters}
-							context={{
-								periodDays: period.days,
-								ordersAnalyzed: summary.ordersAnalyzed,
-								campaignDays: period.campaignDays,
-							}}
-							onExplain={askHost}
-						/>
+						{result.warnings.map((warning, index) => (
+							<Row
+								key={warning}
+								first={index === 0}
+								icon={
+									<AlertTriangle className="size-4 text-amber-600 dark:text-amber-400" />
+								}
+								title={
+									<span className="font-normal text-muted-foreground">
+										{warning}
+									</span>
+								}
+							/>
+						))}
 					</Card>
 				</Section>
-
-				<Section
-					title="Como o score é calculado"
-					description="Três perguntas, com pesos diferentes. Nenhum eixo sozinho decide: um lift altíssimo em cima de estoque zerado não vira campanha."
-				>
-					<ScoreExplainer />
-				</Section>
-
-				<Section
-					title="Regras de associação"
-					description="A leitura direcional das combinações, dentro do mesmo pedido. Quem leva o produto da esquerda tende a levar o da direita."
-				>
-					<Card>
-						<RulesTable rules={result.rules} formatters={formatters} />
-					</Card>
-				</Section>
-
-				<Section
-					title="Sequência de compra"
-					description="O que o cliente volta para comprar em um pedido seguinte, e quanto tempo costuma levar. É gatilho de recompra, não kit."
-				>
-					<Card>
-						<SequencesTable
-							sequences={result.sequences}
-							formatters={formatters}
-						/>
-					</Card>
-				</Section>
-
-				<Section
-					title="Como ler estes números"
-					description="O que cada métrica mede e onde ela engana."
-				>
-					<Glossary />
-				</Section>
-
-				{result.warnings.length > 0 ? (
-					<Section
-						title={`Avisos (${result.warnings.length})`}
-						description="Limites da análise que afetam como estes números devem ser lidos."
-					>
-						<Card className="border border-amber-500/30">
-							{result.warnings.map((warning, index) => (
-								<Row
-									key={warning}
-									first={index === 0}
-									icon={<AlertTriangle className="size-4" />}
-									title={
-										<span className="font-normal text-muted-foreground">
-											{warning}
-										</span>
-									}
-								/>
-							))}
-						</Card>
-					</Section>
-				) : null}
-			</Page>
-		</TooltipProvider>
+			) : null}
+		</Page>
 	);
 }

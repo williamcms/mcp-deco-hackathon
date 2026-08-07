@@ -75,14 +75,42 @@
 /**
  * Elevação padrão de card do deco Studio: uma borda sutil resolvida como
  * sombra, para o card não ganhar peso de outline em cima de fundo escuro.
+ *
+ * A cor sai do texto, não do token de borda: assim a intensidade acompanha o
+ * tema em vez de depender de o host mandar um `--color-border` calibrado.
  */
 @utility card-shadow {
 	box-shadow:
-		0 0 0 1px var(--color-border),
+		0 0 0 1px color-mix(in oklab, var(--color-foreground) 10%, transparent),
 		0 1px 2px 0 rgb(0 0 0 / 0.04);
 }
 
+/**
+ * Superfície de painel flutuante (tooltip, menu).
+ *
+ * `--color-popover` aponta para o mesmo valor do fundo da página, então um
+ * painel que confiasse nele sumiria no próprio fundo. Aqui a elevação é
+ * construída misturando texto no fundo, o que funciona nos dois temas.
+ */
+@utility floating-surface {
+	background-color: color-mix(in oklab, var(--color-foreground) 7%, var(--color-background));
+	box-shadow:
+		0 0 0 1px color-mix(in oklab, var(--color-foreground) 14%, transparent),
+		0 8px 24px -6px rgb(0 0 0 / 0.35);
+}
+
 @layer base {
+	/**
+	 * Tailwind v4 mudou a cor de borda padrão para `currentColor`. Sem esta
+	 * regra toda borda herda a cor do texto — que no tema escuro é quase
+	 * branco, e é o que deixava as linhas de tabela e card estridentes.
+	 */
+	*,
+	::before,
+	::after {
+		border-color: color-mix(in oklab, var(--color-foreground) 12%, transparent);
+	}
+
 	button,
 	a,
 	select,
