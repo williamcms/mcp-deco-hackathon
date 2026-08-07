@@ -37,7 +37,11 @@ export function buildExplainPrompt(
 	const { economics: eco, inventory: inv, scoreBreakdown: parts } = combination;
 
 	const products = combination.products
-		.map((product) => `- ${product.title} (categoria: ${product.category})`)
+		.map((product) => {
+			const stockText = product.stock == null ? "estoque desconhecido" : `estoque ${product.stock} un.`;
+			const priceText = product.avgPrice == null ? "sem venda no período" : money.format(product.avgPrice);
+			return `- ${product.title} (categoria: ${product.category}, aparece sozinho em ${product.orderCount} pedidos, ${product.avgUnitsPerOrder} un./pedido nesta combinação, preço médio ${priceText}, ${stockText})`;
+		})
 		.join("\n");
 
 	const lines = [
@@ -50,7 +54,7 @@ export function buildExplainPrompt(
 		`- Aparece em ${combination.supportCount} pedidos (support ${combination.support}%)`,
 		`- Lift ${eco.lift}x — o acaso preveria ${eco.expectedOrders} pedidos, aconteceram ${eco.coOccurrenceOrders}`,
 		`- Pedidos além do acaso: ${eco.incrementalOrders}`,
-		`- Receita média por pedido com a combinação: ${money.format(eco.bundleRevenue)}`,
+		`- Ticket médio com a combinação: ${money.format(eco.bundleRevenue)}`,
 		eco.bundleMargin != null
 			? `- Margem média do kit: ${money.format(eco.bundleMargin)} (${eco.bundleMarginPct}%), com ${eco.marginCoverage}% da receita tendo custo cadastrado`
 			: "- Margem indisponível: falta custo unitário cadastrado nas variantes",
