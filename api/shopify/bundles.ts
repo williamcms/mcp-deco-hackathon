@@ -187,6 +187,11 @@ export interface BundleProduct {
     minVariantPrice: { amount: string };
     maxVariantPrice: { amount: string };
   };
+  /** Null when no variant has a compare-at price set — i.e. no discount. */
+  compareAtPriceRange: {
+    minVariantCompareAtPrice: { amount: string } | null;
+    maxVariantCompareAtPrice: { amount: string } | null;
+  } | null;
 }
 
 const LIST_BUNDLES_QUERY = /* GraphQL */ `
@@ -211,6 +216,14 @@ const LIST_BUNDLES_QUERY = /* GraphQL */ `
             amount
           }
           maxVariantPrice {
+            amount
+          }
+        }
+        compareAtPriceRange {
+          minVariantCompareAtPrice {
+            amount
+          }
+          maxVariantCompareAtPrice {
             amount
           }
         }
@@ -250,6 +263,9 @@ export interface BundleSummary {
   imageUrl: string | null;
   minPrice: number;
   maxPrice: number;
+  /** Original price before discount. Null when the bundle has no discount. */
+  compareAtMinPrice: number | null;
+  compareAtMaxPrice: number | null;
   totalInventory: number | null;
   adminUrl: string;
   onlineStoreUrl: string | null;
@@ -272,6 +288,12 @@ export function summarizeBundles(
       imageUrl: product.featuredImage?.url ?? null,
       minPrice: Number(product.priceRangeV2.minVariantPrice.amount),
       maxPrice: Number(product.priceRangeV2.maxVariantPrice.amount),
+      compareAtMinPrice: product.compareAtPriceRange?.minVariantCompareAtPrice
+        ? Number(product.compareAtPriceRange.minVariantCompareAtPrice.amount)
+        : null,
+      compareAtMaxPrice: product.compareAtPriceRange?.maxVariantCompareAtPrice
+        ? Number(product.compareAtPriceRange.maxVariantCompareAtPrice.amount)
+        : null,
       totalInventory: product.totalInventory,
       adminUrl: adminProductUrl(shopDomain, product.id),
       onlineStoreUrl: product.onlineStoreUrl,

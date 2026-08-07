@@ -32,7 +32,6 @@ import {
   ArrowRight,
   ChevronRight,
   Coins,
-  ExternalLink,
   HelpCircle,
   Info,
   Layers,
@@ -1064,7 +1063,27 @@ function bundlePriceRange(bundle: BundleSummary, money: Intl.NumberFormat): stri
   return `${money.format(bundle.minPrice)} – ${money.format(bundle.maxPrice)}`;
 }
 
-function BundlesTable({ bundles, money }: { bundles: BundleSummary[]; money: Intl.NumberFormat }) {
+/** A compare-at price only counts as a discount if it's actually higher than what's charged today. */
+function bundleHasDiscount(bundle: BundleSummary): boolean {
+  return bundle.compareAtMinPrice != null && bundle.compareAtMinPrice > bundle.minPrice;
+}
+
+function bundleCompareAtRange(bundle: BundleSummary, money: Intl.NumberFormat): string {
+  if (bundle.compareAtMinPrice == null) return "";
+  const max = bundle.compareAtMaxPrice ?? bundle.compareAtMinPrice;
+  if (bundle.compareAtMinPrice === max) return money.format(bundle.compareAtMinPrice);
+  return `${money.format(bundle.compareAtMinPrice)} – ${money.format(max)}`;
+}
+
+function BundlesTable({
+  bundles,
+  money,
+  onRequestApprove,
+}: {
+  bundles: BundleSummary[];
+  money: Intl.NumberFormat;
+  onRequestApprove: (bundle: BundleSummary) => void;
+}) {
   if (bundles.length === 0) {
     return <Empty>Nenhum bundle aqui no momento.</Empty>;
   }
@@ -1077,7 +1096,7 @@ function BundlesTable({ bundles, money }: { bundles: BundleSummary[]; money: Int
             <TableHead className="text-xs">Bundle</TableHead>
             <TableHead className="text-xs text-right">Preço</TableHead>
             <TableHead className="text-xs text-right">Estoque</TableHead>
-            <TableHead className="w-10" />
+            <TableHead className="w-24" />
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -1098,8 +1117,17 @@ function BundlesTable({ bundles, money }: { bundles: BundleSummary[]; money: Int
                   </span>
                 </div>
               </TableCell>
-              <TableCell className="tabular-nums text-right whitespace-nowrap">
-                {bundlePriceRange(bundle, money)}
+              <TableCell className="text-right whitespace-nowrap">
+                {bundleHasDiscount(bundle) ? (
+                  <span className="flex flex-col items-end">
+                    <span className="tabular-nums">{bundlePriceRange(bundle, money)}</span>
+                    <span className="text-muted-foreground text-xs line-through tabular-nums">
+                      {bundleCompareAtRange(bundle, money)}
+                    </span>
+                  </span>
+                ) : (
+                  <span className="tabular-nums">{bundlePriceRange(bundle, money)}</span>
+                )}
               </TableCell>
               <TableCell className="tabular-nums text-right">
                 {bundle.totalInventory != null ? (
@@ -1109,15 +1137,9 @@ function BundlesTable({ bundles, money }: { bundles: BundleSummary[]; money: Int
                 )}
               </TableCell>
               <TableCell className="text-right">
-                <a
-                  href={bundle.onlineStoreUrl ?? bundle.adminUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1 text-xs underline underline-offset-2 whitespace-nowrap"
-                >
-                  Admin
-                  <ExternalLink className="size-3" />
-                </a>
+                {bundle.status === "DRAFT" ? (
+                  <SmallButton onClick={() => onRequestApprove(bundle)}>Aprovar</SmallButton>
+                ) : null}
               </TableCell>
             </TableRow>
           ))}
@@ -1127,13 +1149,15 @@ function BundlesTable({ bundles, money }: { bundles: BundleSummary[]; money: Int
   );
 }
 
-function BundlesSection({ bundles }: { bundles: BundlesData }) {
-  const money = new Intl.NumberFormat("pt-BR", {
-    style: "currency",
-    currency: bundles.currency || "BRL",
-    maximumFractionDigits: 2,
-  });
-
+function BundlesSection({
+  bundles,
+  money,
+  onRequestApprove,
+}: {
+  bundles: BundlesData;
+  money: Intl.NumberFormat;
+  onRequestApprove: (bundle: BundleSummary) => void;
+}) {
   return (
     <div className="flex flex-col gap-10">
       <Section
@@ -1146,7 +1170,7 @@ function BundlesSection({ bundles }: { bundles: BundlesData }) {
         }
       >
         <Card>
-          <BundlesTable bundles={bundles.draft} money={money} />
+          <BundlesTable bundles={bundles.draft} money={money} onRequestApprove={onRequestApprove} />
         </Card>
       </Section>
 
@@ -1160,7 +1184,7 @@ function BundlesSection({ bundles }: { bundles: BundlesData }) {
         }
       >
         <Card>
-          <BundlesTable bundles={bundles.active} money={money} />
+          <BundlesTable bundles={bundles.active} money={money} onRequestApprove={onRequestApprove} />
         </Card>
       </Section>
     </div>
@@ -1403,6 +1427,13 @@ export default function DiscoverCombinationsPage() {
   const [glossaryOpen, setGlossaryOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("combinations");
 
+  // Bundle approval: confirmed drafts are tracked locally instead of
+  // re-running the whole analysis just to move one product between tables.
+  const [confirmingBundle, setConfirmingBundle] = useState<BundleSummary | null>(null);
+  const [approvingId, setApprovingId] = useState<string | null>(null);
+  const [approveError, setApproveError] = useState<string | null>(null);
+  const [approvedIds, setApprovedIds] = useState<Set<string>>(new Set());
+
   /**
    * Calls the tool directly on the server that serves this app.
    *
@@ -1479,6 +1510,30 @@ export default function DiscoverCombinationsPage() {
     runCreateBundle(combinationTitle(combination), components, true);
   }
 
+  /** Publishes a draft bundle (status DRAFT -> ACTIVE), only after the confirmation modal's own click. */
+  async function approveBundle(bundle: BundleSummary) {
+    if (!app || approvingId) return;
+
+    setApprovingId(bundle.productId);
+    setApproveError(null);
+
+    try {
+      const response = await app.callServerTool({
+        name: "approve_bundle",
+        arguments: { productId: bundle.productId },
+      });
+
+      if (response.isError) throw new Error(extractToolErrorText(response));
+
+      setApprovedIds((previous) => new Set(previous).add(bundle.productId));
+      setConfirmingBundle(null);
+    } catch (error) {
+      setApproveError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setApprovingId(null);
+    }
+  }
+
   function askHost(prompt: string) {
     app?.sendMessage({
       role: "user",
@@ -1552,9 +1607,29 @@ export default function DiscoverCombinationsPage() {
   const best = result.combinations[0];
   const attachRate = summary.ordersAnalyzed > 0 ? (summary.multiItemOrders / summary.ordersAnalyzed) * 100 : 0;
 
+  // Approved drafts move to "active" locally, without waiting for a full re-run.
+  const bundles: BundlesData =
+    approvedIds.size === 0
+      ? result.bundles
+      : {
+          ...result.bundles,
+          draft: result.bundles.draft.filter((bundle) => !approvedIds.has(bundle.productId)),
+          active: [
+            ...result.bundles.draft
+              .filter((bundle) => approvedIds.has(bundle.productId))
+              .map((bundle) => ({ ...bundle, status: "ACTIVE" as const })),
+            ...result.bundles.active,
+          ],
+        };
+  const bundleMoney = new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: bundles.currency || "BRL",
+    maximumFractionDigits: 2,
+  });
+
   const tabOptions: TabOption[] = [
     { key: "combinations", label: "Combinações" },
-    { key: "bundles", label: "Bundles", badge: result.bundles.draft.length },
+    { key: "bundles", label: "Bundles", badge: bundles.draft.length },
     { key: "rules", label: "Regras & sequências" },
     { key: "sales", label: "Vendas" },
   ];
@@ -1674,7 +1749,7 @@ export default function DiscoverCombinationsPage() {
         </TabsContent>
 
         <TabsContent value="bundles">
-          <BundlesSection bundles={result.bundles} />
+          <BundlesSection bundles={bundles} money={bundleMoney} onRequestApprove={setConfirmingBundle} />
         </TabsContent>
 
         <TabsContent value="rules">
@@ -1750,6 +1825,60 @@ export default function DiscoverCombinationsPage() {
             <Glossary />
           </div>
         </div>
+      </Modal>
+
+      <Modal
+        open={confirmingBundle != null}
+        onClose={() => {
+          if (approvingId) return;
+          setConfirmingBundle(null);
+          setApproveError(null);
+        }}
+        title="Aprovar bundle?"
+      >
+        {confirmingBundle ? (
+          <div className="flex flex-col gap-4">
+            <p className="text-sm">
+              <b>{confirmingBundle.title}</b> vai ser publicado na loja agora — o status muda de rascunho para ativo,
+              visível para os clientes.
+            </p>
+            <div className="flex justify-between items-center bg-muted/40 px-3 py-2 rounded-lg text-sm">
+              <span className="text-muted-foreground">Preço</span>
+              <span className="font-medium tabular-nums">{bundlePriceRange(confirmingBundle, bundleMoney)}</span>
+            </div>
+            {bundleHasDiscount(confirmingBundle) ? (
+              <Alert icon={<Percent className="size-4" />}>
+                Este bundle está com desconto: de{" "}
+                <b className="text-foreground">{bundleCompareAtRange(confirmingBundle, bundleMoney)}</b> por{" "}
+                <b className="text-foreground">{bundlePriceRange(confirmingBundle, bundleMoney)}</b>.
+              </Alert>
+            ) : null}
+            {approveError ? (
+              <Alert icon={<AlertTriangle className="size-4" />} tone="danger">
+                {approveError}
+              </Alert>
+            ) : null}
+            <div className="flex justify-end gap-2">
+              <SmallButton
+                variant="ghost"
+                disabled={approvingId !== null}
+                onClick={() => {
+                  setConfirmingBundle(null);
+                  setApproveError(null);
+                }}
+              >
+                Cancelar
+              </SmallButton>
+              <SmallButton
+                active
+                disabled={approvingId !== null}
+                onClick={() => approveBundle(confirmingBundle)}
+              >
+                {approvingId ? "Aprovando..." : "Aprovar e publicar"}
+              </SmallButton>
+            </div>
+          </div>
+        ) : null}
       </Modal>
     </Page>
   );

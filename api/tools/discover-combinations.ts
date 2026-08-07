@@ -207,6 +207,8 @@ const bundleSummarySchema = z.object({
   imageUrl: z.string().nullable(),
   minPrice: z.number(),
   maxPrice: z.number(),
+  compareAtMinPrice: z.number().nullable().describe("Preço original antes do desconto. Null: sem desconto."),
+  compareAtMaxPrice: z.number().nullable(),
   totalInventory: z.number().nullable(),
   adminUrl: z.string(),
   onlineStoreUrl: z.string().nullable(),
