@@ -104,7 +104,7 @@ function Row({
 }) {
   return (
     <div>
-      {first ? null : <div className="mx-5 bg-border/60 h-px" />}
+      {first ? null : <div className="mx-5 bg-border h-px" />}
       <div className="flex items-center gap-3 px-4 py-4">
         {icon ? (
           <div className="flex justify-center items-center bg-muted/60 rounded-lg size-8 text-muted-foreground shrink-0">
@@ -133,8 +133,8 @@ function Alert({
   return (
     <div
       role="alert"
-      className={`relative w-full rounded-lg px-4 py-3 text-sm flex gap-3 items-center bg-card card-shadow ${
-        tone === "danger" ? "text-destructive" : "text-muted-foreground"
+      className={`relative w-full rounded-lg px-4 py-3 text-sm flex gap-3 items-center bg-card border border-border ${
+        tone === "danger" ? "text-destructive" : "text-card-foreground"
       }`}
     >
       <span className="shrink-0">{icon}</span>
@@ -158,7 +158,7 @@ function SmallButton({
   variant?: "outline" | "ghost";
 }) {
   const base =
-    "inline-flex items-center justify-center whitespace-nowrap rounded-lg h-7 px-2.5 text-xs gap-1.5 transition-all outline-none focus-visible:ring-2 focus-visible:ring-ring/30 disabled:pointer-events-none disabled:opacity-50";
+    "inline-flex items-center justify-center whitespace-nowrap rounded-lg h-7 px-2.5 text-sm gap-1.5 transition-all outline-none focus-visible:border-ring focus-visible:ring-[2px] focus-visible:ring-ring/20 disabled:pointer-events-none disabled:opacity-50";
 
   const tone = active
     ? "bg-primary text-primary-foreground"
@@ -178,7 +178,7 @@ function InfoTip({ metric, content }: { metric?: MetricKey; content?: ReactNode 
   const body =
     content ??
     (metric ? (
-      <span className="flex flex-col gap-1">
+      <span className="flex flex-col gap-1 w-full">
         <span className="font-medium">{METRICS[metric].label}</span>
         <span className="text-muted-foreground">{METRICS[metric].short}</span>
       </span>
@@ -257,7 +257,7 @@ function LiftCell({ lift }: { lift: number }) {
     <HoverTip
       className="inline-flex cursor-help"
       content={
-        <span className="flex flex-col gap-1">
+        <span className="flex flex-col gap-1 w-full">
           <span className="font-medium">{reading}</span>
           <span className="text-muted-foreground">Ponto neutro: 1,0x.</span>
         </span>
@@ -281,7 +281,7 @@ function ViabilityCell({
     inventory.level === "unknown" ? (
       <span>Algum produto da combinação está sem estoque informado. Isso é falta de dado, não estoque zerado.</span>
     ) : (
-      <span className="flex flex-col gap-1">
+      <span className="flex flex-col gap-1 w-full">
         <span>
           O estoque atual monta <b>{formatters.int.format(inventory.maxBundles ?? 0)} kits</b>, e a campanha deve puxar{" "}
           <b>{formatters.int.format(Math.round(inventory.projectedBundles))}</b> no horizonte configurado.
@@ -330,7 +330,7 @@ function ScoreCell({ combination, formatters }: { combination: Combination; form
     <HoverTip
       className="inline-flex cursor-help"
       content={
-        <span className="flex flex-col gap-2">
+        <span className="flex flex-col gap-2 w-full">
           <span className="font-medium">Como este score foi calculado</span>
           <span className="flex flex-col gap-1">
             {segments.map((segment) => (

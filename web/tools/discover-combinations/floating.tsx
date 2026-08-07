@@ -42,9 +42,6 @@ function anchorFrom(element: HTMLElement, halfWidth: number): Anchor {
   return { x, y: below ? rect.bottom + 8 : rect.top - 8, below };
 }
 
-const PANEL =
-  "pointer-events-none fixed z-100 max-w-[300px] max-h-[320px] overflow-y-auto whitespace-normal break-words rounded-lg floating-surface px-3 py-2 text-xs leading-relaxed text-foreground";
-
 export function HoverTip({
   content,
   children,
@@ -77,8 +74,6 @@ export function HoverTip({
 
   return (
     <>
-      {/* Botão, não span: o gatilho é focável e revela conteúdo, então quem
-			    navega por teclado precisa alcançá-lo. */}
       <button
         type="button"
         ref={ref}
@@ -98,7 +93,7 @@ export function HoverTip({
         <span
           id={id}
           role="tooltip"
-          className={PANEL}
+          className="z-100 fixed px-3 py-2 rounded-lg w-auto min-w-50 max-w-75 max-h-80 overflow-y-auto text-foreground text-xs text-left wrap-break-word text-balance leading-relaxed whitespace-normal pointer-events-none floating-surface"
           style={{
             left: anchor.x,
             top: anchor.y,
