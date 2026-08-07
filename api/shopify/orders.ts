@@ -14,8 +14,11 @@ import {
  *   daquele item fica indisponível (contabilizamos a cobertura).
  * - `inventoryQuantity` é o estoque ATUAL da variante, não o do momento da
  *   venda — a Shopify não guarda snapshot histórico de estoque.
+ * - `customer` é opcional porque exige o escopo read_customers, que nem toda
+ *   instalação tem. Só a análise de sequência precisa dele; sem o escopo a
+ *   query nem pede o campo, em vez de falhar inteira.
  */
-const ORDERS_QUERY = /* GraphQL */ `
+const buildOrdersQuery = (includeCustomer: boolean) => /* GraphQL */ `
 	query CollectSales($first: Int!, $after: String, $query: String!) {
 		orders(
 			first: $first
@@ -36,6 +39,7 @@ const ORDERS_QUERY = /* GraphQL */ `
 				currencyCode
 				displayFinancialStatus
 				sourceName
+				${includeCustomer ? "customer { id }" : ""}
 				channelInformation {
 					channelDefinition {
 						channelName
@@ -149,6 +153,8 @@ export interface ShopifyOrder {
 	currencyCode: string;
 	displayFinancialStatus: string | null;
 	sourceName: string | null;
+	/** Presente só quando a coleta pediu customer (escopo read_customers). */
+	customer?: { id: string } | null;
 	channelInformation: {
 		channelDefinition: { channelName: string; handle: string } | null;
 	} | null;
@@ -178,11 +184,21 @@ export interface FetchOrdersResult {
 	ordersWithTruncatedItems: number;
 }
 
+export interface FetchOrdersOptions {
+	/**
+	 * Pede o cliente de cada pedido. Exige o escopo read_customers — quem usa
+	 * deve tratar a falha e reconsultar sem o campo.
+	 */
+	includeCustomer?: boolean;
+}
+
 export async function fetchOrders(
 	credentials: ShopifyCredentials,
 	since: Date,
 	maxOrders: number,
+	options: FetchOrdersOptions = {},
 ): Promise<FetchOrdersResult> {
+	const graphqlQuery = buildOrdersQuery(options.includeCustomer === true);
 	const query = `created_at:>='${since.toISOString()}'`;
 	const orders: ShopifyOrder[] = [];
 	let after: string | null = null;
@@ -193,7 +209,7 @@ export async function fetchOrders(
 		const remaining = maxOrders - orders.length;
 		const data: OrdersQueryResult = await shopifyGraphQL<OrdersQueryResult>(
 			credentials,
-			ORDERS_QUERY,
+			graphqlQuery,
 			{ first: Math.min(PAGE_SIZE, remaining), after, query },
 		);
 
