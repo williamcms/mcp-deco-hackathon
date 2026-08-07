@@ -167,3 +167,56 @@ export async function shopifyGraphQL<T>(
 
 	throw new ShopifyApiError("Não foi possível completar a chamada à Shopify.");
 }
+
+/**
+ * Executa uma chamada na Admin REST API.
+ */
+export async function shopifyRest<T>(
+	credentials: ShopifyCredentials,
+	path: string,
+	method: "GET" | "POST" | "PUT" | "DELETE" = "GET",
+	body?: Record<string, unknown>,
+): Promise<T> {
+	const { shopDomain, adminAccessToken, apiVersion } = credentials;
+	const url = `https://${shopDomain}/admin/api/${apiVersion}${path}`;
+
+	for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+		const response = await fetch(url, {
+			method,
+			headers: {
+				"Content-Type": "application/json",
+				"X-Shopify-Access-Token": adminAccessToken,
+			},
+			...(body ? { body: JSON.stringify(body) } : {}),
+		});
+
+		if (response.status === 429) {
+			if (attempt === MAX_RETRIES) {
+				throw new ShopifyApiError(
+					"Shopify recusou por rate limit (429) após várias tentativas (REST).",
+				);
+			}
+			const retryAfter = Number(response.headers.get("Retry-After")) || 2;
+			await sleep(retryAfter * 1000);
+			continue;
+		}
+
+		if (response.status === 401 || response.status === 403) {
+			throw new ShopifyConfigError(
+				`Shopify recusou a autenticação REST (HTTP ${response.status}). Verifique o access token.`,
+			);
+		}
+
+		if (!response.ok) {
+			const text = await response.text().catch(() => "");
+			throw new ShopifyApiError(
+				`Shopify REST respondeu HTTP ${response.status}.`,
+				text.slice(0, 500),
+			);
+		}
+
+		return (await response.json()) as T;
+	}
+
+	throw new ShopifyApiError("Não foi possível completar a chamada REST à Shopify.");
+}

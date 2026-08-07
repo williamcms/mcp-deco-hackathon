@@ -1,4 +1,4 @@
-import { ShopifyApiError, type ShopifyCredentials, shopifyGraphQL } from "./client.ts";
+import { ShopifyApiError, type ShopifyCredentials, shopifyGraphQL, shopifyRest } from "./client.ts";
 
 // ---------------------------------------------------------------------------
 // Tipos
@@ -571,4 +571,39 @@ function formatUserErrors(errors: Array<{ field: string[] | null; message: strin
   return errors
     .map((error) => (error.field?.length ? `${error.field.join(".")}: ${error.message}` : error.message))
     .join("; ");
+}
+
+export interface ProductImage {
+  id: number;
+  product_id: number;
+  position: number;
+  created_at: string;
+  updated_at: string;
+  width: number;
+  height: number;
+  src: string;
+  variant_ids: number[];
+}
+
+export async function uploadProductImage(
+  credentials: ShopifyCredentials,
+  productId: string,
+  base64Data: string,
+): Promise<ProductImage> {
+  const numericProductId = numericId(productId);
+  
+  const payload = {
+    image: {
+      attachment: base64Data
+    }
+  };
+
+  const data = await shopifyRest<{ image: ProductImage }>(
+    credentials,
+    `/products/${numericProductId}/images.json`,
+    "POST",
+    payload
+  );
+
+  return data.image;
 }

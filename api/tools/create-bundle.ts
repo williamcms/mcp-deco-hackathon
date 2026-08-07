@@ -1,5 +1,6 @@
 import { createTool } from "@decocms/runtime/tools";
 import { z } from "zod";
+import { GoogleGenAI } from "@google/genai";
 import {
   buildBundlePlan,
   type ComponentRequest,
@@ -14,6 +15,7 @@ import {
   toProductGid,
   updateBundlePrice,
   updateBundleProduct,
+  uploadProductImage,
 } from "../shopify/bundles.ts";
 import { resolveCredentials } from "../shopify/client.ts";
 import type { Env } from "../types/env.ts";
@@ -161,6 +163,7 @@ export const createBundleOutputSchema = z.object({
       variantsPriced: z.number(),
       operationId: z.string(),
       operationStatus: z.string(),
+      imageUrl: z.string().nullable().optional(),
     })
     .nullable()
     .describe("Preenchido só quando dryRun = false e a criação concluiu"),
@@ -315,6 +318,73 @@ export const createBundleTool = (env: Env) =>
         ...(context.descriptionHtml ? { descriptionHtml: context.descriptionHtml } : {}),
       });
 
+      let generatedImageUrl: string | null = null;
+      try {
+        const apiKey = process.env["GEMINI_API_KEY"];
+        if (apiKey) {
+          const ai = new GoogleGenAI({ apiKey });
+          const prompt = `Uma imagem promocional realista e de alta qualidade de um kit de produtos (bundle) contendo: ${components.map((c) => plan.components.find(pc => pc.productId === c.productId)?.title || "Produto").join(", ")}. Fundo neutro de estúdio, iluminação profissional. Utilize as imagens de referência dos produtos fornecidas para compor o kit.`;
+          
+          const inputContent: any[] = [];
+          for (const c of plan.components) {
+              if (c.imageUrl) {
+                  try {
+                      const res = await fetch(c.imageUrl);
+                      if (res.ok) {
+                          const buffer = await res.arrayBuffer();
+                          const base64 = Buffer.from(buffer).toString("base64");
+                          const mimeType = res.headers.get("content-type") || "image/jpeg";
+                          inputContent.push({
+                              inlineData: {
+                                  data: base64,
+                                  mimeType: mimeType
+                              }
+                          });
+                      }
+                  } catch (e) {
+                      console.error("Erro ao buscar imagem de referência", e);
+                  }
+              }
+          }
+          inputContent.push(prompt);
+
+          const interaction = await (ai.interactions as any).create({
+              model: "models/gemini-3.1-flash-lite-image",
+              input: inputContent,
+              generation_config: {
+                  temperature: 1,
+                  max_output_tokens: 65536,
+                  topP: 0.95,
+                  thinkingLevel: "minimal",
+                  imageConfig: {
+                      aspectRatio: "1:1",
+                      imageSize: "1K",
+                  },
+              },
+              response_modalities: ["image"],
+          });
+
+          if (interaction.steps) {
+              for (const step of interaction.steps) {
+                  if (step.type === "model_output" && step.content) {
+                      for (const part of step.content) {
+                          if (part.type === "image" && part.data) {
+                              const uploadedImage = await uploadProductImage(
+                                credentials,
+                                updated.id,
+                                part.data
+                              );
+                              generatedImageUrl = uploadedImage.src;
+                          }
+                      }
+                  }
+              }
+          }
+        }
+      } catch (err) {
+        warnings.push(`Não foi possível gerar a imagem promocional com Nano Banana: ${err instanceof Error ? err.message : "Erro desconhecido"}`);
+      }
+
       if (status === "ACTIVE") {
         warnings.push(
           "O produto foi ativado, mas ativar não publica: confirme os canais de venda do kit no admin antes de divulgar.",
@@ -339,6 +409,7 @@ export const createBundleTool = (env: Env) =>
           variantsPriced,
           operationId: operation.operationId,
           operationStatus: finished?.status ?? operation.status,
+          imageUrl: generatedImageUrl,
         },
         warnings,
         nextStep:
