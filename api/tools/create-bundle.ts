@@ -319,13 +319,17 @@ export const createBundleTool = (env: Env) =>
       });
 
       let generatedImageUrl: string | null = null;
-      try {
-        const apiKey = process.env["GEMINI_API_KEY"];
-        if (apiKey) {
+      const apiKey = process.env["GEMINI_API_KEY"];
+      if (!apiKey) {
+        warnings.push(
+          "Imagem promocional não gerada: variável de ambiente GEMINI_API_KEY não configurada.",
+        );
+      } else {
+        try {
           const ai = new GoogleGenAI({ apiKey });
           const prompt = `Uma imagem promocional realista e de alta qualidade de um kit de produtos (bundle) contendo: ${components.map((c) => plan.components.find(pc => pc.productId === c.productId)?.title || "Produto").join(", ")}. Fundo neutro de estúdio, iluminação profissional. Utilize as imagens de referência dos produtos fornecidas para compor o kit.`;
-          
-          const inputContent: any[] = [];
+
+          const inputContent: unknown[] = [];
           for (const c of plan.components) {
               if (c.imageUrl) {
                   try {
@@ -335,10 +339,9 @@ export const createBundleTool = (env: Env) =>
                           const base64 = Buffer.from(buffer).toString("base64");
                           const mimeType = res.headers.get("content-type") || "image/jpeg";
                           inputContent.push({
-                              inlineData: {
-                                  data: base64,
-                                  mimeType: mimeType
-                              }
+                              type: "image",
+                              data: base64,
+                              mime_type: mimeType,
                           });
                       }
                   } catch (e) {
@@ -346,19 +349,17 @@ export const createBundleTool = (env: Env) =>
                   }
               }
           }
-          inputContent.push(prompt);
+          inputContent.push({ type: "text", text: prompt });
 
           const interaction = await (ai.interactions as any).create({
-              model: "models/gemini-3.1-flash-lite-image",
+              model: "gemini-3.1-flash-image",
               input: inputContent,
               generation_config: {
-                  temperature: 1,
                   max_output_tokens: 65536,
-                  topP: 0.95,
-                  thinkingLevel: "minimal",
-                  imageConfig: {
-                      aspectRatio: "1:1",
-                      imageSize: "1K",
+                  thinking_level: "minimal",
+                  image_config: {
+                      aspect_ratio: "1:1",
+                      image_size: "1K",
                   },
               },
               response_modalities: ["image"],
@@ -380,9 +381,9 @@ export const createBundleTool = (env: Env) =>
                   }
               }
           }
+        } catch (err) {
+          warnings.push(`Não foi possível gerar a imagem promocional com Nano Banana: ${err instanceof Error ? err.message : "Erro desconhecido"}`);
         }
-      } catch (err) {
-        warnings.push(`Não foi possível gerar a imagem promocional com Nano Banana: ${err instanceof Error ? err.message : "Erro desconhecido"}`);
       }
 
       if (status === "ACTIVE") {
