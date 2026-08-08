@@ -163,6 +163,54 @@ const sequenceSchema = z.object({
   medianDaysBetween: z.number(),
 });
 
+const crossSellEdgeSchema = z.object({
+  productId: z.string(),
+  title: z.string(),
+  category: z.string(),
+  support: z.number().describe("Em % do total de pedidos"),
+  confidence: z.number().describe("P(este produto | o produto ponte), em %"),
+  lift: z.number(),
+  incrementalMargin: z.number().nullable(),
+  coOccurrenceOrders: z.number(),
+});
+
+const nextPurchaseEdgeSchema = z.object({
+  productId: z.string(),
+  title: z.string(),
+  category: z.string(),
+  customersWithFrom: z.number(),
+  customersWithBoth: z.number(),
+  confidence: z.number().describe("Em %"),
+  medianDaysBetween: z.number(),
+});
+
+const strongestRelationshipSchema = z.object({
+  productId: z.string(),
+  title: z.string(),
+  type: z.enum(["cross_sell", "next_purchase"]),
+  lift: z.number().nullable(),
+  confidence: z.number().nullable(),
+});
+
+const productCentralitySchema = z.object({
+  productId: z.string(),
+  title: z.string(),
+  category: z.string(),
+  orders: z.number(),
+  centralityScore: z.number().describe("0 a 100 — quão hub/produto ponte este produto é no catálogo"),
+  totalConnections: z.number().describe("Produtos distintos conectados, cross-sell + próxima compra"),
+  crossSellConnections: z.number(),
+  nextPurchaseConnections: z.number(),
+  totalIncrementalMargin: z.number(),
+  averageLift: z.number().nullable(),
+  averageConfidence: z.number().nullable().describe("Em %"),
+  isolated: z.boolean().describe("true quando não há conexão comercial relevante na janela"),
+  isolatedReason: z.string().nullable(),
+  strongestRelationship: strongestRelationshipSchema.nullable(),
+  crossSell: z.array(crossSellEdgeSchema).describe("Top relações de mesmo pedido, por lift desc"),
+  nextPurchase: z.array(nextPurchaseEdgeSchema).describe("Top relações de compra posterior, por confidence desc"),
+});
+
 const salesSummarySchema = z.object({
   orders: z.number(),
   units: z.number(),
@@ -241,6 +289,11 @@ export const discoverCombinationsOutputSchema = z.object({
   combinations: z.array(combinationSchema),
   rules: z.array(ruleSchema),
   sequences: z.array(sequenceSchema),
+  bundleCentrality: z
+    .array(productCentralitySchema)
+    .describe(
+      "Bundle Centrality: todo produto visto na janela, com score de quão 'produto ponte' ele é, suas relações de cross-sell e próxima compra, e se está isolado. Ordenado por centralityScore desc.",
+    ),
   sales: z.object({
     currency: z.string(),
     summary: salesSummarySchema,
@@ -372,6 +425,7 @@ export const discoverCombinationsTool = (env: Env) =>
         combinations: result.combinations,
         rules: result.rules,
         sequences: result.sequences,
+        bundleCentrality: result.bundleCentrality,
         sales: {
           currency: sales.currency,
           summary: sales.summary,
@@ -439,7 +493,7 @@ function buildRecentOrders(orders: ShopifyOrder[], includeCancelled: boolean, li
   return rows.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)).slice(0, limit);
 }
 
-interface CollectResult {
+export interface CollectResult {
   orders: ShopifyOrder[];
   truncated: boolean;
   ordersWithTruncatedItems: number;
@@ -457,7 +511,7 @@ interface CollectResult {
  * customer — the rest of the report comes out the same, and the warning
  * says what was lost.
  */
-async function collectOrders(
+export async function collectOrders(
   credentials: Parameters<typeof fetchOrders>[0],
   from: Date,
   maxOrders: number,

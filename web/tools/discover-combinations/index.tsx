@@ -7,6 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsContent } from "@/web/components/ui/tabs.tsx";
 import { useMcpApp, useMcpHostContext, useMcpState } from "@/web/context.tsx";
 import { cn } from "@/web/lib/utils.ts";
+import { BundleGraphSection } from "@/web/tools/discover-combinations/bundle-graph-section.tsx";
 import { buildExplainPrompt, combinationTitle } from "@/web/tools/discover-combinations/explain-prompt.ts";
 import { ActionMenu, HoverTip, Modal } from "@/web/tools/discover-combinations/floating.tsx";
 import { METRICS, type MetricKey } from "@/web/tools/discover-combinations/metrics-copy.ts";
@@ -21,6 +22,7 @@ import {
   type CombinationFormatters,
   createCombinationFormatters,
   createSalesFormatters,
+  formatDaysBetween,
   formatLiftMultiplier,
   formatOptionalPercentage,
   formatPercentage,
@@ -48,7 +50,6 @@ import { Fragment, type ReactNode, useEffect, useRef, useState } from "react";
 import { Area, AreaChart, CartesianGrid, Tooltip, XAxis, YAxis } from "recharts";
 
 type Combination = DiscoverCombinationsOutput["combinations"][number];
-type Rule = DiscoverCombinationsOutput["rules"][number];
 type Sequence = DiscoverCombinationsOutput["sequences"][number];
 
 const PERIODS = [7, 30, 60] as const;
@@ -85,7 +86,7 @@ function Page({ children }: { children: ReactNode }) {
   );
 }
 
-function Section({
+export function Section({
   title,
   description,
   right,
@@ -112,7 +113,7 @@ function Section({
   );
 }
 
-function Card({ children, className = "" }: { children: ReactNode; className?: string }) {
+export function Card({ children, className = "" }: { children: ReactNode; className?: string }) {
   return (
     <div
       data-slot="card"
@@ -124,7 +125,7 @@ function Card({ children, className = "" }: { children: ReactNode; className?: s
 }
 
 /** Studio-style card row, with a divider above unless it's the first. */
-function Row({
+export function Row({
   icon,
   title,
   description,
@@ -156,7 +157,7 @@ function Row({
   );
 }
 
-function Alert({
+export function Alert({
   icon,
   tone = "neutral",
   children,
@@ -178,7 +179,7 @@ function Alert({
   );
 }
 
-function SmallButton({
+export function SmallButton({
   children,
   onClick,
   active = false,
@@ -498,7 +499,7 @@ function ScoreCell({ combination, formatters }: { combination: Combination; form
 // Tables
 // ---------------------------------------------------------------------------
 
-function Empty({ children }: { children: ReactNode }) {
+export function Empty({ children }: { children: ReactNode }) {
   return <div className="px-4 py-8 text-muted-foreground text-sm text-center">{children}</div>;
 }
 
@@ -742,60 +743,6 @@ function CombinationsTable({
   );
 }
 
-function RulesTable({ rules, formatters }: { rules: Rule[]; formatters: CombinationFormatters }) {
-  if (rules.length === 0) {
-    return <Empty>Nenhuma regra passou dos cortes de confiança e lift.</Empty>;
-  }
-
-  return (
-    <div className="overflow-x-auto">
-      <Table>
-        <TableHeader>
-          <TableRow className="hover:bg-transparent">
-            <TableHead className="text-xs">Quem leva</TableHead>
-            <TableHead className="w-8" />
-            <TableHead className="text-xs">Também leva</TableHead>
-            <TableHead className="text-xs text-right">
-              <HeadWithTip metric="confidence" align="right" />
-            </TableHead>
-            <TableHead className="text-xs text-right">
-              <HeadWithTip metric="lift" align="right" />
-            </TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {rules.map((rule) => (
-            <TableRow
-              key={`${rule.antecedent.map((p) => p.id).join("|")}=>${rule.consequent.map((p) => p.id).join("|")}`}
-            >
-              <TableCell>
-                <ProductChips products={rule.antecedent} />
-              </TableCell>
-              <TableCell className="text-muted-foreground">
-                <ArrowRight className="size-3.5" />
-              </TableCell>
-              <TableCell>
-                <ProductChips products={rule.consequent} />
-              </TableCell>
-              <TableCell className="tabular-nums text-right">
-                <HoverTip
-                  className="cursor-help"
-                  content={`${formatPercentage(rule.confidence)} de quem levou o primeiro também levou o segundo, em ${formatters.int.format(rule.supportCount)} ${rule.supportCount === 1 ? "pedido" : "pedidos"}.`}
-                >
-                  {formatPercentage(rule.confidence)}
-                </HoverTip>
-              </TableCell>
-              <TableCell className="text-right">
-                <LiftCell lift={rule.lift} />
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </div>
-  );
-}
-
 function SequencesTable({ sequences, formatters }: { sequences: Sequence[]; formatters: CombinationFormatters }) {
   if (sequences.length === 0) {
     return (
@@ -844,9 +791,7 @@ function SequencesTable({ sequences, formatters }: { sequences: Sequence[]; form
                 <span className="text-muted-foreground"> de {formatters.int.format(sequence.customersWithFrom)}</span>
                 <span className="block text-[11px] text-muted-foreground">{formatPercentage(sequence.confidence)}</span>
               </TableCell>
-              <TableCell className="tabular-nums text-right">
-                ~{formatters.decimal.format(sequence.medianDaysBetween)} dias
-              </TableCell>
+              <TableCell className="tabular-nums text-right">{formatDaysBetween(sequence.medianDaysBetween)}</TableCell>
             </TableRow>
           ))}
         </TableBody>
@@ -1591,7 +1536,7 @@ function BundlePreview({
             </SmallButton>
           ) : (
             <>
-              <SmallButton variant="ghost" onClick={onDismiss} disabled={busy}>
+              <SmallButton variant="ghost" onClick={onDismiss}>
                 Cancelar
               </SmallButton>
               <SmallButton active onClick={onPublish} disabled={busy || duplicate}>
@@ -1639,6 +1584,9 @@ export default function DiscoverCombinationsPage() {
   // there's a modal with a spinner instead of a dead pause after the click.
   const [bundleModalOpen, setBundleModalOpen] = useState(false);
   const [bundleDiscountPct, setBundleDiscountPct] = useState(0);
+  // Lets the close button abandon an in-flight create_bundle call instead of
+  // being stuck disabled until the response comes back.
+  const bundleAbortRef = useRef<AbortController | null>(null);
 
   const [sortBy, setSortBy] = useState<SortKey>("score");
   const [glossaryOpen, setGlossaryOpen] = useState(false);
@@ -1703,14 +1651,20 @@ export default function DiscoverCombinationsPage() {
   ) {
     if (!app || bundleBusy) return;
 
+    const controller = new AbortController();
+    bundleAbortRef.current = controller;
+
     setBundleBusy(dryRun ? "simulate" : "publish");
     setBundleError(null);
 
     try {
-      const response = await app.callServerTool({
-        name: "create_bundle",
-        arguments: { components, dryRun, discountPercentage: discountPct },
-      });
+      const response = await app.callServerTool(
+        {
+          name: "create_bundle",
+          arguments: { components, dryRun, discountPercentage: discountPct },
+        },
+        { signal: controller.signal },
+      );
 
       if (response.isError) throw new Error(extractToolErrorText(response));
 
@@ -1721,21 +1675,33 @@ export default function DiscoverCombinationsPage() {
 
       setBundlePreview({ title, components, result: structured });
     } catch (error) {
+      // Cancelled from the close button — the modal is already gone, no error to show.
+      if (controller.signal.aborted) return;
       setBundleError(error instanceof Error ? error.message : String(error));
     } finally {
-      setBundleBusy(null);
+      if (!controller.signal.aborted) setBundleBusy(null);
     }
   }
 
-  function startBundlePreview(combination: Combination) {
-    const components = combination.products.map((product) => ({
+  /** Close button and "Cancelar": abandons any in-flight create_bundle call and resets the modal. */
+  function cancelBundleModal() {
+    bundleAbortRef.current?.abort();
+    setBundleModalOpen(false);
+    setBundlePreview(null);
+    setBundleError(null);
+    setBundleBusy(null);
+  }
+
+  /** Reused by both the combinations table (full Combination) and the bundle graph (a bare pair of products). */
+  function startBundlePreview(products: Array<{ id: string; title: string }>, title: string) {
+    const components = products.map((product) => ({
       productId: product.id,
     }));
     setBundlePreview(null);
     setBundleError(null);
     setBundleModalOpen(true);
     setBundleDiscountPct(0);
-    runCreateBundle(combinationTitle(combination), components, true, 0);
+    runCreateBundle(title, components, true, 0);
   }
 
   function changeBundleDiscount(value: number) {
@@ -1787,7 +1753,8 @@ export default function DiscoverCombinationsPage() {
   /**
    * Publishes a draft bundle (status DRAFT -> ACTIVE), only after the
    * confirmation modal's own click. Swaps the thumbnail to a GIF for a beat
-   * before the real call goes out, then reverts once it's done.
+   * before the real approve_bundle call goes out, then reverts once it's
+   * done.
    */
   async function approveBundle(bundle: BundleSummary) {
     if (!app || approvingId) return;
@@ -2004,7 +1971,7 @@ export default function DiscoverCombinationsPage() {
                     campaignDays: period.campaignDays,
                   }}
                   onAskHost={askHost}
-                  onCreateBundle={startBundlePreview}
+                  onCreateBundle={(combination) => startBundlePreview(combination.products, combinationTitle(combination))}
                 />
               </Card>
             </Section>
@@ -2019,17 +1986,22 @@ export default function DiscoverCombinationsPage() {
         <TabsContent value="rules">
           <div className="flex flex-col gap-10">
             <Section
-              title="Regras de associação"
-              description="A leitura direcional das combinações, dentro do mesmo pedido. Quem leva o produto da esquerda tende a levar o da direita."
+              title="Produtos ponte e cross-sell"
+              description="Selecione um produto na lateral para ver como ele se conecta ao resto do catálogo: o que sai junto no mesmo pedido."
             >
-              <Card>
-                <RulesTable rules={result.rules} formatters={formatters} />
-              </Card>
+              <BundleGraphSection
+                bundleCentrality={result.bundleCentrality}
+                periodDays={period.days}
+                formatters={formatters}
+                onCreateBundle={startBundlePreview}
+                isFullscreen={isFullscreen}
+                onToggleFullscreen={toggleDisplayMode}
+              />
             </Section>
 
             <Section
-              title="Sequência de compra"
-              description="O que o cliente volta para comprar em um pedido seguinte, e quanto tempo costuma levar. É gatilho de recompra, não kit."
+              title="Upsell"
+              description="O que o cliente costuma comprar depois, em um pedido seguinte. É gatilho de recompra, não um kit de cross-sell."
             >
               <Card>
                 <SequencesTable sequences={result.sequences} formatters={formatters} />
@@ -2073,16 +2045,7 @@ export default function DiscoverCombinationsPage() {
         </span>
       </button>
 
-      <Modal
-        open={bundleModalOpen}
-        onClose={() => {
-          if (bundleBusy) return;
-          setBundleModalOpen(false);
-          setBundlePreview(null);
-          setBundleError(null);
-        }}
-        title="Montar bundle"
-      >
+      <Modal open={bundleModalOpen} onClose={cancelBundleModal} title="Montar bundle">
         <div className="flex flex-col gap-4">
           {bundleBusy === "publish" ? (
             <PublishProgress />
@@ -2103,10 +2066,7 @@ export default function DiscoverCombinationsPage() {
                   discountPct={bundleDiscountPct}
                   duplicate={[...bundles.draft, ...bundles.active].some((b) => b.title === bundlePreview.title)}
                   onPublish={() => runCreateBundle(bundlePreview.title, bundlePreview.components, false)}
-                  onDismiss={() => {
-                    setBundleModalOpen(false);
-                    setBundlePreview(null);
-                  }}
+                  onDismiss={cancelBundleModal}
                   onChangeOption={changeBundleOption}
                   onChangeDiscount={changeBundleDiscount}
                   onRemoveComponent={removeBundleComponent}
@@ -2147,20 +2107,20 @@ export default function DiscoverCombinationsPage() {
       >
         {confirmingBundle ? (
           <div className="flex flex-col gap-4">
-            <div className="flex items-center gap-3 min-w-0">
+            <div className="flex flex-col items-center gap-3 text-center">
               {gifBundleId === confirmingBundle.productId ? (
                 // biome-ignore lint/performance/noImgElement: playful loading beat, not a real thumbnail
-                <img src={APPROVAL_GIF_URL} alt="" className="bg-muted rounded-md size-14 object-cover shrink-0" />
+                <img src={APPROVAL_GIF_URL} alt="" className="bg-muted rounded-lg size-32 object-cover shrink-0" />
               ) : confirmingBundle.imageUrl ? (
                 // biome-ignore lint/performance/noImgElement: thumbnail comes straight from Shopify, no host-side optimization
                 <img
                   src={confirmingBundle.imageUrl}
                   alt=""
-                  className="bg-muted rounded-md size-14 object-cover shrink-0"
+                  className="bg-muted rounded-lg size-32 object-cover shrink-0"
                 />
               ) : (
-                <div className="flex justify-center items-center bg-muted rounded-md size-14 text-muted-foreground shrink-0">
-                  <Package className="size-5" />
+                <div className="flex justify-center items-center bg-muted rounded-lg size-32 text-muted-foreground shrink-0">
+                  <Package className="size-8" />
                 </div>
               )}
               <p className="text-sm">

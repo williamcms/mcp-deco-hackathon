@@ -1,0 +1,135 @@
+import type { CombinationFormatters } from "@/web/utils/formatters.ts";
+import { useMemo, useState } from "react";
+import { BundleFlowCanvas } from "./bundle-flow-canvas.tsx";
+import { computeHubThreshold, type CrossSellEdge, type ProductGraphNode } from "./bundle-flow-nodes.tsx";
+import {
+	BundleRelationshipDrawer,
+	type RelationshipDetail,
+} from "./bundle-relationship-drawer.tsx";
+import { BundleSidebar } from "./bundle-sidebar.tsx";
+import { Empty } from "./index.tsx";
+
+function isHubProduct(node: ProductGraphNode, hubThreshold: number): boolean {
+	return !node.isolated && node.centralityScore >= hubThreshold;
+}
+
+/**
+ * Resumo determinístico do produto central — todo número aqui vem de
+ * `bundleCentrality` (api/analysis/centrality.ts), nunca inventado.
+ */
+function buildInsight(node: ProductGraphNode, hubThreshold: number): string {
+	if (node.isolated) {
+		return `${node.title} não teve nenhuma relação comercial relevante detectada na janela analisada.`;
+	}
+
+	const parts: string[] = [];
+	if (isHubProduct(node, hubThreshold))
+		parts.push(`${node.title} é um dos principais produtos ponte do catálogo.`);
+	parts.push(
+		`Participa de ${node.totalConnections} ${node.totalConnections === 1 ? "relação comercial relevante" : "relações comerciais relevantes"}.`,
+	);
+	if (node.strongestRelationship)
+		parts.push(
+			`Seu relacionamento mais forte é com ${node.strongestRelationship.title}.`,
+		);
+	return parts.join(" ");
+}
+
+export interface BundleGraphSectionProps {
+	bundleCentrality: ProductGraphNode[];
+	periodDays: number;
+	formatters: CombinationFormatters;
+	onCreateBundle: (
+		products: Array<{ id: string; title: string }>,
+		title: string,
+	) => void;
+	isFullscreen: boolean;
+	onToggleFullscreen: () => void;
+}
+
+export function BundleGraphSection({
+	bundleCentrality,
+	periodDays,
+	formatters,
+	onCreateBundle,
+	isFullscreen,
+	onToggleFullscreen,
+}: BundleGraphSectionProps) {
+	const [selectedId, setSelectedId] = useState<string | null>(
+		bundleCentrality[0]?.productId ?? null,
+	);
+	const [detail, setDetail] = useState<RelationshipDetail | null>(null);
+
+	const selectedNode = useMemo(
+		() =>
+			bundleCentrality.find((node) => node.productId === selectedId) ??
+			bundleCentrality[0] ??
+			null,
+		[bundleCentrality, selectedId],
+	);
+
+	const hubThreshold = useMemo(
+		() => computeHubThreshold(bundleCentrality),
+		[bundleCentrality],
+	);
+
+	if (bundleCentrality.length === 0) {
+		return <Empty>Nenhum produto encontrado no período analisado.</Empty>;
+	}
+
+	if (!selectedNode) return null;
+
+	/** Monta o bundle com o produto central + um ou mais produtos de cross-sell — usado tanto pela ação rápida de um card quanto pela seleção em lote. */
+	function handleCreateBundle(edges: CrossSellEdge[]) {
+		if (!selectedNode || edges.length === 0) return;
+		const others = edges.map((edge) => ({ id: edge.productId, title: edge.title }));
+		onCreateBundle(
+			[{ id: selectedNode.productId, title: selectedNode.title }, ...others],
+			[selectedNode.title, ...others.map((o) => o.title)].join(" + "),
+		);
+	}
+
+	function openDetails(edge: CrossSellEdge) {
+		if (!selectedNode) return;
+		setDetail({ central: selectedNode, edge });
+	}
+
+	return (
+		<div className="flex flex-col gap-3">
+			<div className="flex flex-col lg:flex-row gap-4">
+				<BundleSidebar
+					nodes={bundleCentrality}
+					selectedId={selectedNode.productId}
+					onSelect={setSelectedId}
+					formatters={formatters}
+					hubThreshold={hubThreshold}
+				/>
+				<div className="flex flex-col flex-1 gap-3 min-w-0">
+					<p className="text-muted-foreground text-sm leading-relaxed">
+						{buildInsight(selectedNode, hubThreshold)}
+					</p>
+					<BundleFlowCanvas
+						node={selectedNode}
+						isHub={isHubProduct(selectedNode, hubThreshold)}
+						periodDays={periodDays}
+						formatters={formatters}
+						onExplore={setSelectedId}
+						onOpenDetails={openDetails}
+						onCreateBundle={(edge) => handleCreateBundle([edge])}
+						onCreateBundleSelection={handleCreateBundle}
+						isFullscreen={isFullscreen}
+						onToggleFullscreen={onToggleFullscreen}
+					/>
+				</div>
+			</div>
+
+			<BundleRelationshipDrawer
+				detail={detail}
+				onClose={() => setDetail(null)}
+				onExplore={setSelectedId}
+				onCreateBundle={(edge) => handleCreateBundle([edge])}
+				formatters={formatters}
+			/>
+		</div>
+	);
+}

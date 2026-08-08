@@ -1,5 +1,6 @@
 import type { ShopifyOrder } from "../shopify/orders.ts";
 import { apriori } from "./apriori.ts";
+import { computeBundleCentrality, type ProductCentrality } from "./centrality.ts";
 import { fpGrowth } from "./fpgrowth.ts";
 import {
   type CombinationEconomics,
@@ -112,6 +113,8 @@ export interface DiscoverResult {
   rules: DiscoveredRule[];
   sequences: DiscoveredSequence[];
   customersAnalyzed: number;
+  /** Bundle Centrality de todo produto visto na janela, inclusive isolados. Ordenado por score desc. */
+  bundleCentrality: ProductCentrality[];
   warnings: string[];
 }
 
@@ -161,14 +164,12 @@ export function discoverCombinations(orders: readonly ShopifyOrder[], options: D
     campaignDays: options.campaignDays,
   };
 
-  const combinations = buildCombinations(
-    itemsets,
-    transactions,
-    stats,
-    index,
-    economicsOptions,
-    options.maxCombinations,
-  );
+  // Sem corte: toda combinação de 2+ itens frequente aqui, na ordem de score
+  // desc. `combinations` (o campo público, exibido na aba "Combinações")
+  // corta em maxCombinations; a Bundle Centrality usa a lista inteira, para
+  // um produto não parecer "sem conexão" só porque ficou fora do top N.
+  const allCombinations = buildCombinations(itemsets, transactions, stats, index, economicsOptions);
+  const combinations = allCombinations.slice(0, options.maxCombinations);
 
   const rules = generateRules(itemsets, {
     transactionCount: ordersAnalyzed,
@@ -187,7 +188,7 @@ export function discoverCombinations(orders: readonly ShopifyOrder[], options: D
       conviction: rule.conviction != null ? round(rule.conviction) : null,
     }));
 
-  let sequences: DiscoveredSequence[] = [];
+  let allSequences: DiscoveredSequence[] = [];
   let customersAnalyzed = 0;
 
   if (options.includeSequence) {
@@ -197,7 +198,8 @@ export function discoverCombinations(orders: readonly ShopifyOrder[], options: D
       minConfidence: options.minConfidence,
     });
     customersAnalyzed = result.customersAnalyzed;
-    sequences = result.rules.slice(0, options.maxRules).map((rule) => ({
+    // Sem corte, mesma razão que allCombinations acima.
+    allSequences = result.rules.map((rule) => ({
       from: refOf(rule.from, index, stats),
       to: refOf(rule.to, index, stats),
       customersWithFrom: rule.customersWithFrom,
@@ -206,6 +208,12 @@ export function discoverCombinations(orders: readonly ShopifyOrder[], options: D
       medianDaysBetween: rule.medianDaysBetween,
     }));
   }
+  const sequences = allSequences.slice(0, options.maxRules);
+
+  const bundleCentrality = computeBundleCentrality(stats, allCombinations, allSequences, {
+    periodDays: options.periodDays,
+    minOrdersThreshold: options.minOrders,
+  });
 
   collectWarnings(warnings, {
     options,
@@ -230,17 +238,18 @@ export function discoverCombinations(orders: readonly ShopifyOrder[], options: D
     rules,
     sequences,
     customersAnalyzed,
+    bundleCentrality,
     warnings,
   };
 }
 
+/** Devolve TODAS as combinações de 2+ itens, ordenadas por score desc — sem corte de topo. Corte por `maxCombinations` é responsabilidade do chamador. */
 function buildCombinations(
   itemsets: readonly MinedItemset[],
   transactions: ReturnType<typeof buildTransactions>["transactions"],
   stats: ReadonlyMap<string, ProductStat>,
   index: ItemIndex,
   economicsOptions: EconomicsOptions,
-  limit: number,
 ): DiscoveredCombination[] {
   const candidates: DiscoveredCombination[] = [];
 
@@ -280,7 +289,7 @@ function buildCombinations(
   }
 
   candidates.sort((a, b) => b.score - a.score || b.supportCount - a.supportCount);
-  return candidates.slice(0, limit);
+  return candidates;
 }
 
 const VIABILITY_WEIGHT: Record<InventoryViability["level"], number> = {
@@ -344,6 +353,7 @@ function emptyResult(options: DiscoverOptions, warnings: string[], ordersWithCus
     rules: [],
     sequences: [],
     customersAnalyzed: ordersWithCustomer,
+    bundleCentrality: [],
     warnings,
   };
 }

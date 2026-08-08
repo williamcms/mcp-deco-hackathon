@@ -27,6 +27,20 @@ export function formatLiftMultiplier(lift: number): string {
 }
 
 /**
+ * Formata a mediana de dias entre duas compras (sequência de recompra).
+ *
+ * O valor em si (ms → dia, arredondado a 1 casa) está correto e testado —
+ * quando dá "~0,1 dias" não é bug de unidade, é o cliente tendo comprado os
+ * dois produtos quase no mesmo instante. Mas "~0,1 dias" lido rápido soa como
+ * erro de conta; "menos de 1 dia" é o mesmo dado, sem essa ambiguidade.
+ */
+export function formatDaysBetween(days: number): string {
+  if (days < 1) return "menos de 1 dia";
+  const rounded = Math.round(days * 10) / 10;
+  return `~${rounded.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} ${rounded === 1 ? "dia" : "dias"}`;
+}
+
+/**
  * Cria um formatador de moeda pt-BR. `compact` usa notação abreviada
  * (ex: "R$ 1,2 mil"), útil em eixos de gráfico e cartões de métrica onde
  * não cabe o valor cheio.
