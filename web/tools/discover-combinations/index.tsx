@@ -1076,6 +1076,14 @@ function bundleCompareAtRange(bundle: BundleSummary, money: Intl.NumberFormat): 
   return `${money.format(bundle.compareAtMinPrice)} – ${money.format(max)}`;
 }
 
+/**
+ * "Aprovar" briefly swaps the bundle's thumbnail for this GIF before the real
+ * approve_bundle call goes out, then reverts once it's done — see
+ * `approveBundle` in DiscoverCombinationsPage.
+ */
+const APPROVAL_GIF_URL = "https://static2.klipy.com/ii/4493325008d34b7bf8cd6813cd5c1619/fc/32/kVQfKVOzOBvj.gif";
+const APPROVAL_GIF_DURATION_MS = 3000;
+
 function BundlesTable({
   bundles,
   money,
@@ -1642,6 +1650,8 @@ export default function DiscoverCombinationsPage() {
   const [approvingId, setApprovingId] = useState<string | null>(null);
   const [approveError, setApproveError] = useState<string | null>(null);
   const [approvedIds, setApprovedIds] = useState<Set<string>>(new Set());
+  // productId currently showing the approval GIF instead of its real thumbnail.
+  const [gifBundleId, setGifBundleId] = useState<string | null>(null);
 
   /**
    * Calls the tool directly on the server that serves this app.
@@ -1774,12 +1784,19 @@ export default function DiscoverCombinationsPage() {
     runCreateBundle(bundlePreview.title, components, true);
   }
 
-  /** Publishes a draft bundle (status DRAFT -> ACTIVE), only after the confirmation modal's own click. */
+  /**
+   * Publishes a draft bundle (status DRAFT -> ACTIVE), only after the
+   * confirmation modal's own click. Swaps the thumbnail to a GIF for a beat
+   * before the real call goes out, then reverts once it's done.
+   */
   async function approveBundle(bundle: BundleSummary) {
     if (!app || approvingId) return;
 
     setApprovingId(bundle.productId);
     setApproveError(null);
+    setGifBundleId(bundle.productId);
+
+    await new Promise((resolve) => setTimeout(resolve, APPROVAL_GIF_DURATION_MS));
 
     try {
       const response = await app.callServerTool({
@@ -1795,6 +1812,7 @@ export default function DiscoverCombinationsPage() {
       setApproveError(error instanceof Error ? error.message : String(error));
     } finally {
       setApprovingId(null);
+      setGifBundleId(null);
     }
   }
 
@@ -2129,10 +2147,27 @@ export default function DiscoverCombinationsPage() {
       >
         {confirmingBundle ? (
           <div className="flex flex-col gap-4">
-            <p className="text-sm">
-              <b>{confirmingBundle.title}</b> vai ser publicado na loja agora — o status muda de rascunho para ativo,
-              visível para os clientes.
-            </p>
+            <div className="flex items-center gap-3 min-w-0">
+              {gifBundleId === confirmingBundle.productId ? (
+                // biome-ignore lint/performance/noImgElement: playful loading beat, not a real thumbnail
+                <img src={APPROVAL_GIF_URL} alt="" className="bg-muted rounded-md size-14 object-cover shrink-0" />
+              ) : confirmingBundle.imageUrl ? (
+                // biome-ignore lint/performance/noImgElement: thumbnail comes straight from Shopify, no host-side optimization
+                <img
+                  src={confirmingBundle.imageUrl}
+                  alt=""
+                  className="bg-muted rounded-md size-14 object-cover shrink-0"
+                />
+              ) : (
+                <div className="flex justify-center items-center bg-muted rounded-md size-14 text-muted-foreground shrink-0">
+                  <Package className="size-5" />
+                </div>
+              )}
+              <p className="text-sm">
+                <b>{confirmingBundle.title}</b> vai ser publicado na loja agora — o status muda de rascunho para
+                ativo, visível para os clientes.
+              </p>
+            </div>
             <div className="flex justify-between items-center bg-muted/40 px-3 py-2 rounded-lg text-sm">
               <span className="text-muted-foreground">Preço</span>
               <span className="font-medium tabular-nums">{bundlePriceRange(confirmingBundle, bundleMoney)}</span>

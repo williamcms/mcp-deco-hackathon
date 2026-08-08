@@ -1,14 +1,16 @@
 import { createTool } from "@decocms/runtime/tools";
 import { z } from "zod";
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, Type } from "@google/genai";
 import {
   buildBundlePlan,
+  type BundlePlan,
   type ComponentRequest,
   defaultBundleTitle,
   type PricingStrategy,
 } from "../analysis/bundle-plan.ts";
 import {
   adminProductUrl,
+  type ComponentProduct,
   createProductBundle,
   fetchComponentProducts,
   pollBundleOperation,
@@ -190,6 +192,11 @@ export const createBundleOutputSchema = z.object({
       operationId: z.string(),
       operationStatus: z.string(),
       imageUrl: z.string().nullable().optional(),
+      descriptionHtml: z.string().nullable().optional().describe("Descrição aplicada — gerada por IA quando não informada no input."),
+      seoTitle: z.string().nullable().optional().describe("Título de SEO aplicado — gerado por IA quando não informado no input."),
+      seoDescription: z.string().nullable().optional().describe("Meta description aplicada — gerada por IA quando não informada no input."),
+      imageAlt: z.string().nullable().optional().describe("Texto alternativo aplicado à imagem gerada."),
+      tags: z.array(z.string()).optional().describe("Tags aplicadas ao produto do kit."),
     })
     .nullable()
     .describe("Preenchido só quando dryRun = false e a criação concluiu"),
@@ -219,7 +226,6 @@ export const createBundleTool = (env: Env) =>
     execute: async ({ context }) => {
       const dryRun = context.dryRun ?? true;
       const status = context.status ?? "DRAFT";
-      const tags = context.tags ?? ["bundle"];
       const maxPollAttempts = context.maxPollAttempts ?? 20;
 
       const components = context.components ?? [];
@@ -338,15 +344,45 @@ export const createBundleTool = (env: Env) =>
         );
       }
 
+      // -----------------------------------------------------------------
+      // Enriquecimento com IA (Gemini): descrição, SEO, alt e tags — só
+      // preenche o que o chamador não informou explicitamente no input.
+      // -----------------------------------------------------------------
+
+      const apiKey = process.env["GEMINI_API_KEY"];
+      const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
+      if (!ai) {
+        warnings.push(
+          "Imagem e textos (descrição, SEO, alt, tags) não gerados por IA: variável de ambiente GEMINI_API_KEY não configurada.",
+        );
+      }
+
+      let enrichment: BundleEnrichment | null = null;
+      if (ai) {
+        try {
+          enrichment = await generateBundleEnrichment(ai, title, plan, byId);
+        } catch (err) {
+          warnings.push(
+            `Não foi possível gerar descrição/SEO/tags com IA: ${err instanceof Error ? err.message : "Erro desconhecido"}`,
+          );
+        }
+      }
+
+      const finalDescriptionHtml = context.descriptionHtml ?? enrichment?.descriptionHtml ?? null;
+      const finalSeoTitle = context.seoTitle ?? enrichment?.seoTitle ?? null;
+      const finalSeoDescription = context.seoDescription ?? enrichment?.seoDescription ?? null;
+      const finalImageAlt = context.imageAlt ?? enrichment?.imageAlt ?? null;
+      const finalTags = context.tags ?? mergeTags(["bundle"], enrichment?.tags);
+
       const seo = {
-        ...(context.seoTitle ? { title: context.seoTitle } : {}),
-        ...(context.seoDescription ? { description: context.seoDescription } : {}),
+        ...(finalSeoTitle ? { title: finalSeoTitle } : {}),
+        ...(finalSeoDescription ? { description: finalSeoDescription } : {}),
       };
 
       const updated = await updateBundleProduct(credentials, product.id, {
         status,
-        tags,
-        ...(context.descriptionHtml ? { descriptionHtml: context.descriptionHtml } : {}),
+        tags: finalTags,
+        ...(finalDescriptionHtml ? { descriptionHtml: finalDescriptionHtml } : {}),
         ...(Object.keys(seo).length > 0 ? { seo } : {}),
         ...(context.handle ? { handle: context.handle } : {}),
       });
@@ -360,14 +396,8 @@ export const createBundleTool = (env: Env) =>
       }
 
       let generatedImageUrl: string | null = null;
-      const apiKey = process.env["GEMINI_API_KEY"];
-      if (!apiKey) {
-        warnings.push(
-          "Imagem promocional não gerada: variável de ambiente GEMINI_API_KEY não configurada.",
-        );
-      } else {
+      if (ai) {
         try {
-          const ai = new GoogleGenAI({ apiKey });
           const prompt = `Uma imagem promocional realista e de alta qualidade de um kit de produtos (bundle) contendo: ${components.map((c) => plan.components.find(pc => pc.productId === c.productId)?.title || "Produto").join(", ")}. Fundo neutro de estúdio, iluminação profissional. Utilize as imagens de referência dos produtos fornecidas para compor o kit.`;
 
           const inputContent: unknown[] = [];
@@ -415,7 +445,7 @@ export const createBundleTool = (env: Env) =>
                                 credentials,
                                 updated.id,
                                 part.data,
-                                context.imageAlt,
+                                finalImageAlt ?? undefined,
                               );
                               generatedImageUrl = uploadedImage.src;
                           }
@@ -453,6 +483,11 @@ export const createBundleTool = (env: Env) =>
           operationId: operation.operationId,
           operationStatus: finished?.status ?? operation.status,
           imageUrl: generatedImageUrl,
+          descriptionHtml: finalDescriptionHtml,
+          seoTitle: finalSeoTitle,
+          seoDescription: finalSeoDescription,
+          imageAlt: finalImageAlt,
+          tags: finalTags,
         },
         warnings,
         nextStep:
@@ -470,4 +505,102 @@ function findDuplicate(ids: string[]): string | null {
     seen.add(id);
   }
   return null;
+}
+
+interface BundleEnrichment {
+  descriptionHtml: string;
+  seoTitle: string;
+  seoDescription: string;
+  imageAlt: string;
+  tags: string[];
+}
+
+const ENRICHMENT_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    descriptionHtml: {
+      type: Type.STRING,
+      description:
+        "Descrição do kit em HTML simples (parágrafos <p> e uma lista <ul><li> com os itens), destacando o benefício de comprar o kit e a economia.",
+    },
+    seoTitle: { type: Type.STRING, description: "Título para resultado de busca, até 60 caracteres." },
+    seoDescription: { type: Type.STRING, description: "Meta description, até 160 caracteres, com a economia como chamada." },
+    imageAlt: {
+      type: Type.STRING,
+      description:
+        "Texto alternativo da foto do kit para leitor de tela e busca de imagem, até 125 caracteres, descrevendo o que aparece na foto.",
+    },
+    tags: {
+      type: Type.ARRAY,
+      items: { type: Type.STRING },
+      description: '3 a 8 tags curtas relevantes para navegação e busca na loja, sem repetir "bundle".',
+    },
+  },
+  required: ["descriptionHtml", "seoTitle", "seoDescription", "imageAlt", "tags"],
+};
+
+/**
+ * Usa o vocabulário real dos componentes (descrição, tipo, marca, tags já
+ * cadastradas na Shopify) como matéria-prima — sem isso o único insumo
+ * disponível seriam os títulos, e o texto sairia genérico.
+ */
+function buildEnrichmentPrompt(title: string, plan: BundlePlan, byId: Map<string, ComponentProduct>): string {
+  const componentLines = plan.components
+    .map((component) => {
+      const product = byId.get(component.productId);
+      const details = [
+        `${component.title} (x${component.quantity})`,
+        product?.productType ? `tipo: ${product.productType}` : null,
+        product?.vendor ? `marca: ${product.vendor}` : null,
+        product?.tags.length ? `tags atuais: ${product.tags.join(", ")}` : null,
+        product?.description ? `descrição: ${product.description}` : null,
+      ].filter(Boolean);
+      return `- ${details.join(" | ")}`;
+    })
+    .join("\n");
+
+  return `Você é um redator de e-commerce. Escreva o conteúdo de um kit (bundle) de produtos para uma loja, em português do Brasil.
+
+Título do kit: ${title}
+Preço do kit: ${plan.pricing.bundlePrice} ${plan.pricing.currency} (economia de ${plan.pricing.savings} ${plan.pricing.currency}, ${plan.pricing.discountPct}% sobre a soma dos componentes)
+
+Componentes do kit:
+${componentLines}
+
+Gere a descrição, o SEO, o texto alternativo da imagem e as tags conforme o schema pedido.`;
+}
+
+async function generateBundleEnrichment(
+  ai: GoogleGenAI,
+  title: string,
+  plan: BundlePlan,
+  byId: Map<string, ComponentProduct>,
+): Promise<BundleEnrichment> {
+  const response = await ai.models.generateContent({
+    model: "gemini-flash-latest",
+    contents: buildEnrichmentPrompt(title, plan, byId),
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: ENRICHMENT_SCHEMA,
+    },
+  });
+
+  const raw = response.text;
+  if (!raw) {
+    throw new Error("A Gemini não devolveu texto na resposta.");
+  }
+
+  return JSON.parse(raw) as BundleEnrichment;
+}
+
+function mergeTags(base: string[], extra: string[] | undefined): string[] {
+  const seen = new Set<string>();
+  const merged: string[] = [];
+  for (const tag of [...base, ...(extra ?? [])]) {
+    const key = tag.trim().toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    merged.push(tag.trim());
+  }
+  return merged.slice(0, 20);
 }
