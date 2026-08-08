@@ -47,6 +47,12 @@ function product(spec: ProductSpec): ComponentProduct {
 		status: spec.status ?? "ACTIVE",
 		totalInventory: spec.stock ?? 100,
 		featuredImage: null,
+		// Vocabulário vazio: o plano do bundle é cálculo de preço, margem e
+		// estoque, e não lê nenhum destes campos.
+		description: "",
+		productType: "",
+		vendor: "",
+		tags: [],
 		options: options.map((option, index) => ({
 			id: `gid://shopify/ProductOption/${spec.id}-${index}`,
 			name: option.name,

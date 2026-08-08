@@ -32,6 +32,18 @@ export interface ComponentProduct {
   featuredImage: { url: string } | null;
   options: ProductOption[];
   variants: { nodes: ProductVariant[] };
+  /**
+   * Vocabulário do produto, como a loja mesmo escreve. É o insumo de qualquer
+   * texto que o kit venha a ter: sem isso, a única matéria-prima disponível
+   * são os títulos dos componentes.
+   *
+   * `description` vem em texto puro (a Shopify serve `descriptionHtml` como
+   * campo separado) e truncado na query.
+   */
+  description: string;
+  productType: string;
+  vendor: string;
+  tags: string[];
 }
 
 export interface BundleOperationResult {
@@ -95,6 +107,13 @@ export function adminProductUrl(shopDomain: string, productGid: string): string 
 // ---------------------------------------------------------------------------
 
 /**
+ * Corte da descrição de cada componente. O objetivo do campo é vocabulário, e
+ * as primeiras linhas de uma descrição de produto já trazem os termos que
+ * importam — o resto costuma ser tabela de medidas e política de troca.
+ */
+const COMPONENT_DESCRIPTION_CHARS = 600;
+
+/**
  * `featuredImage` está deprecado a partir de 2025-10 em favor de
  * `featuredMedia`, mas o substituto exige escopos de mídia (read_files,
  * read_images) que o token desta app não pede. Como a imagem é enfeite da UI,
@@ -113,6 +132,10 @@ const COMPONENTS_QUERY = /* GraphQL */ `
         handle
         status
         totalInventory
+        description(truncateAt: ${COMPONENT_DESCRIPTION_CHARS})
+        productType
+        vendor
+        tags
         featuredImage {
           url
         }
@@ -481,6 +504,14 @@ export interface UpdatedProduct {
   onlineStoreUrl: string | null;
 }
 
+/**
+ * `seo` e `handle` são campos de `ProductUpdateInput`, não da seleção — por
+ * isso entram só no objeto de variáveis e a mutation não muda.
+ *
+ * Sobre `handle`: a Shopify não recusa um slug já usado, ela sufixa em
+ * silêncio (`kit-cafe` vira `kit-cafe-2`). Quem chama decide se a URL
+ * resultante ainda serve.
+ */
 export async function updateBundleProduct(
   credentials: ShopifyCredentials,
   productId: string,
@@ -488,6 +519,8 @@ export async function updateBundleProduct(
     status?: "ACTIVE" | "DRAFT";
     tags?: string[];
     descriptionHtml?: string;
+    seo?: { title?: string; description?: string };
+    handle?: string;
   },
 ): Promise<UpdatedProduct> {
   const { query, argName } = buildProductUpdateMutation(credentials.apiVersion);
@@ -585,17 +618,23 @@ export interface ProductImage {
   variant_ids: number[];
 }
 
+/**
+ * `alt` é o texto alternativo da imagem — o que leitor de tela anuncia e o que
+ * busca de imagem indexa. Sem ele a foto do kit fica sem descrição nenhuma.
+ */
 export async function uploadProductImage(
   credentials: ShopifyCredentials,
   productId: string,
   base64Data: string,
+  alt?: string,
 ): Promise<ProductImage> {
   const numericProductId = numericId(productId);
-  
+
   const payload = {
     image: {
-      attachment: base64Data
-    }
+      attachment: base64Data,
+      ...(alt ? { alt } : {}),
+    },
   };
 
   const data = await shopifyRest<{ image: ProductImage }>(

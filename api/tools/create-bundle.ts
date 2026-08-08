@@ -74,6 +74,32 @@ export const createBundleInputSchema = z.object({
     .describe("Status do produto criado. Padrão: DRAFT — o kit nasce fechado para revisão antes de ir ao ar."),
   tags: z.array(z.string()).max(20).optional().describe('Tags do produto do kit. Padrão: ["bundle"].'),
   descriptionHtml: z.string().max(10000).optional().describe("Descrição do kit em HTML, exibida na página do produto."),
+  seoTitle: z
+    .string()
+    .max(70)
+    .optional()
+    .describe(
+      "Título da página nos resultados de busca. Sem isso, o Google usa o título do produto. O corte na SERP fica em torno de 60 caracteres.",
+    ),
+  seoDescription: z
+    .string()
+    .max(320)
+    .optional()
+    .describe(
+      "Meta description exibida abaixo do título na busca. Sem isso, o Google monta o trecho sozinho a partir da página. O corte fica em torno de 160 caracteres.",
+    ),
+  handle: z
+    .string()
+    .max(255)
+    .optional()
+    .describe(
+      "Slug da URL do produto, ex: kit-cafe-da-manha. Sem isso a Shopify deriva do título. Slug já usado não é recusado: ela sufixa em silêncio (kit-cafe-2).",
+    ),
+  imageAlt: z
+    .string()
+    .max(512)
+    .optional()
+    .describe("Texto alternativo da imagem do kit — o que leitor de tela anuncia e o que busca de imagem indexa."),
   dryRun: z
     .boolean()
     .optional()
@@ -312,11 +338,26 @@ export const createBundleTool = (env: Env) =>
         );
       }
 
+      const seo = {
+        ...(context.seoTitle ? { title: context.seoTitle } : {}),
+        ...(context.seoDescription ? { description: context.seoDescription } : {}),
+      };
+
       const updated = await updateBundleProduct(credentials, product.id, {
         status,
         tags,
         ...(context.descriptionHtml ? { descriptionHtml: context.descriptionHtml } : {}),
+        ...(Object.keys(seo).length > 0 ? { seo } : {}),
+        ...(context.handle ? { handle: context.handle } : {}),
       });
+
+      // A Shopify sufixa slug repetido em vez de recusar, então o handle
+      // pedido e o aplicado podem divergir sem nenhum erro.
+      if (context.handle && updated.handle !== context.handle) {
+        warnings.push(
+          `A URL pedida ("${context.handle}") já estava em uso e a Shopify aplicou "${updated.handle}". Mude o handle se essa URL não servir.`,
+        );
+      }
 
       let generatedImageUrl: string | null = null;
       const apiKey = process.env["GEMINI_API_KEY"];
@@ -373,7 +414,8 @@ export const createBundleTool = (env: Env) =>
                               const uploadedImage = await uploadProductImage(
                                 credentials,
                                 updated.id,
-                                part.data
+                                part.data,
+                                context.imageAlt,
                               );
                               generatedImageUrl = uploadedImage.src;
                           }
