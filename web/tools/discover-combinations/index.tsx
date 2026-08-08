@@ -1283,12 +1283,57 @@ function Glossary() {
 // Page
 // ---------------------------------------------------------------------------
 
-function Spinner({ label }: { label: string }) {
+function Spinner({ label, labelKey, hint }: { label: string; labelKey?: string | number; hint?: string }) {
   return (
-    <div className="flex justify-center items-center gap-3 py-16 text-muted-foreground">
-      <span className="border-2 border-muted border-t-primary rounded-full w-4 h-4 animate-spin" />
-      <span className="text-sm">{label}</span>
+    <div className="flex flex-col justify-center items-center gap-2 py-16 text-muted-foreground">
+      <div className="flex items-center gap-3">
+        <span className="border-2 border-muted border-t-primary rounded-full w-4 h-4 animate-spin" />
+        {/* Só o texto remonta a cada troca: a chave no spinner reiniciaria o giro. */}
+        <span key={labelKey} className="text-sm animate-in duration-500 fade-in">
+          {label}
+        </span>
+      </div>
+      {hint ? <span className="max-w-80 text-xs text-center leading-relaxed">{hint}</span> : null}
     </div>
+  );
+}
+
+/**
+ * create_bundle cria o produto e gera a imagem promocional na mesma chamada,
+ * sem eventos de progresso. Como não dá para saber em que etapa a tool está,
+ * as mensagens giram em loop — sinalizam que a IA está trabalhando, sem
+ * afirmar um progresso que não temos como medir.
+ */
+const PUBLISH_MESSAGES = [
+  "Thinking...",
+  "Imagining the kit...",
+  "Composing the scene...",
+  "Arranging the products...",
+  "Adjusting the lighting...",
+  "Painting the pixels...",
+  "Rendering the shot...",
+  "Almost there...",
+] as const;
+
+const PUBLISH_MESSAGE_INTERVAL_MS = 2600;
+
+function PublishProgress() {
+  const [index, setIndex] = useState(0);
+
+  useEffect(() => {
+    const timer = setInterval(
+      () => setIndex((previous) => (previous + 1) % PUBLISH_MESSAGES.length),
+      PUBLISH_MESSAGE_INTERVAL_MS,
+    );
+    return () => clearInterval(timer);
+  }, []);
+
+  return (
+    <Spinner
+      labelKey={index}
+      label={PUBLISH_MESSAGES[index]}
+      hint="Criando o kit na Shopify e gerando a imagem promocional. Não feche esta janela."
+    />
   );
 }
 
@@ -1462,6 +1507,21 @@ function BundlePreview({
               : "Algum componente está sem estoque informado."
           }
         />
+        {isCreated && result.bundle?.imageUrl ? (
+          <Row
+            icon={<Sparkles className="size-4" />}
+            title="Imagem promocional gerada"
+            description="Criada por IA a partir das fotos dos produtos e já anexada ao produto na Shopify."
+            right={
+              // biome-ignore lint/performance/noImgElement: imagem vem da CDN da Shopify, sem otimização do host
+              <img
+                src={result.bundle.imageUrl}
+                alt={`Imagem promocional de ${title}`}
+                className="bg-muted rounded-md size-14 object-cover"
+              />
+            }
+          />
+        ) : null}
         {isCreated && result.bundle ? (
           <Row
             icon={<ArrowRight className="size-4" />}
@@ -2006,7 +2066,9 @@ export default function DiscoverCombinationsPage() {
         title="Montar bundle"
       >
         <div className="flex flex-col gap-4">
-          {bundleBusy === "simulate" && !bundlePreview && !bundleError ? (
+          {bundleBusy === "publish" ? (
+            <PublishProgress />
+          ) : bundleBusy === "simulate" && !bundlePreview && !bundleError ? (
             <Spinner label="Calculando o kit..." />
           ) : (
             <>
