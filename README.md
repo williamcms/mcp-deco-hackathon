@@ -1,165 +1,142 @@
-# MCP App Template
+# Mago Receita
 
-Official starter for building MCP Apps on deco — interactive UIs powered by the Model Context Protocol.
+**Mago Receita** is a Shopify commercial-intelligence MCP that turns order history into explainable opportunities for bundles, cross-sell, and repeat purchases.
 
-## Quick Start
+It gives a merchant a navigable commercial map of the catalog instead of a spreadsheet of disconnected metrics: which products act as bridges, which items are bought together, what customers tend to buy later, and which action is safe to validate before it reaches the storefront.
+
+## The problem
+
+Shopify stores accumulate valuable order history, but finding a practical revenue opportunity still takes manual analysis. Merchants need answers such as:
+
+- Which products should be offered together in the same order?
+- Which catalog items are the strongest commercial hubs?
+- What do customers tend to buy after a first product?
+- Is a suggested bundle financially viable and supported by available stock?
+
+Most analytics views stop at reporting. Mago Receita connects evidence to a next action while preserving merchant review before anything changes in Shopify.
+
+## The solution
+
+The MCP reads Shopify order history and builds a commercial relationship map with deterministic calculations:
+
+1. **Market Basket Analysis** finds frequent product combinations and association rules.
+2. **Bundle Centrality** identifies product bridges in the catalog network.
+3. **Cross-sell** exposes products frequently bought in the same order.
+4. **Up-sell / next purchase** keeps a separate list of products customers buy in later orders.
+5. **Action previews** prepare a bundle, complementary-product cross-sell, or up-sell before a merchant confirms a Shopify write.
+
+The interactive experience is available through the `discover_combinations` MCP tool. It includes a cross-sell flow canvas, product-bridge sidebar, relationship details, and the existing repeat-purchase list.
+
+## Why the recommendations are trustworthy
+
+Mago Receita does not use an LLM to calculate commercial metrics. Product relationships are derived from historical orders, then shown with their evidence:
+
+| Signal | Meaning |
+| --- | --- |
+| Support | Share of analyzed orders containing the combination. |
+| Confidence | Probability of the related product given the central product. |
+| Lift | Strength of the association compared with independent purchases; values above 1 indicate a positive association. |
+| Incremental margin | Financial impact estimated from the relationship when product cost data is available. |
+| Bundle Centrality | A 0–100 score combining normalized connections (35%), support (25%), incremental margin (25%), and relationship quality (15%). |
+
+Cross-sell is deliberately separated from next purchase: the first describes products bought in the **same order**, while the second describes a **later order by the same customer**. Neither is presented as proof of causality.
+
+Products without relevant relationships are also shown. An isolated product is not necessarily a weak product; it may be new, niche, low-volume, or not yet exposed in a complementary offer.
+
+## Main capabilities
+
+- Analyze order history with Apriori or FP-Growth.
+- Rank combinations by statistical evidence, margin, stock, and commercial score.
+- Identify product bridges using Bundle Centrality.
+- Explore cross-sell opportunities in an interactive canvas.
+- Inspect support, confidence, lift, orders, margin, and next-purchase timing.
+- Select cross-sell products and preview their publication as Shopify complementary products.
+- Preview and approve Shopify bundles without recreating the existing bundle flow.
+- Surface repeat-purchase opportunities in the dedicated Up-sell list.
+- Guide an agent with MCP prompts for analysis, product exploration, and safe action preparation.
+
+## Shopify permissions
+
+Mago Receita uses a **Shopify Admin API** token. Storefront API permissions do not replace these Admin API permissions.
+
+| Scope | When it is needed | What remains available without it |
+| --- | --- | --- |
+| `read_orders` | Required | Core market-basket and commercial analysis cannot run without order data. |
+| `read_products` | Required | Product names and catalog context cannot be resolved without it. |
+| `read_inventory` | Optional enrichment | The analysis still runs; stock viability and cost-based margin may be unavailable. |
+| `read_customers` | Optional enrichment | Cross-sell remains available; next-purchase/up-sell sequences are skipped. |
+| `read_all_orders` | Optional, Shopify-approved access | Windows beyond Shopify's default 60-day historical limit may be incomplete. |
+| `write_products` | Only for publishing | Analysis and previews remain read-only; bundles, cross-sell, and up-sell cannot be applied. |
+
+Every Shopify-writing tool starts in preview mode (`dryRun: true`) and must be called again with explicit approval before it writes data.
+
+## Install in Deco Studio
+
+This project is integrated through Deco Studio's **GitHub repository import** flow. It does not require a public MCP endpoint stored in this repository.
+
+1. Import the repository and desired branch through Deco Studio.
+2. Attach the installed MCP to the agent that will use the commercial tools.
+3. Configure the Shopify Admin API credentials in the environment or the app state used by the Studio installation.
+4. Open **Descoberta de combinações** and run the analysis against a controlled Shopify store.
+
+For local development, create a private `.env` file:
 
 ```bash
-# Clone the template
-git clone https://github.com/decocms/mcp-app.git my-mcp-app
-cd my-mcp-app
+SHOPIFY_SHOP_DOMAIN=your-store.myshopify.com
+SHOPIFY_ADMIN_ACCESS_TOKEN=shpat_your_admin_token
+SHOPIFY_API_VERSION=2025-01
 
-# Install dependencies
+# Optional: generates bundle copy, SEO fields, tags, and image alt text.
+# It never calculates commercial metrics.
+GEMINI_API_KEY=your_gemini_key
+```
+
+Never commit `.env` or Shopify tokens.
+
+## Local development
+
+Requirements: [Bun](https://bun.sh) and access to a Shopify development or test store.
+
+```bash
 bun install
-
-# Start development
 bun run dev
 ```
 
-## Project Structure
-
-```
-├── api/                        # MCP server (platform-agnostic)
-│   ├── app.ts                  # App core — tools, resources, middleware
-│   ├── main.bun.ts             # Bun entrypoint (local dev)
-│   ├── tools/
-│   │   ├── index.ts            # Tool registry
-│   │   └── hello.ts            # Example tool (hello_world)
-│   ├── resources/
-│   │   └── hello.ts            # MCP App resource (serves HTML)
-│   └── types/
-│       └── env.ts              # StateSchema + Env type
-├── web/                        # React UI (one unified MCP App bundle)
-│   ├── app.tsx                  # Entry point — renders McpProvider + AppRouter
-│   ├── context.tsx               # McpProvider, useMcpState/useMcpApp/... hooks
-│   ├── router.tsx                # ToolRouter — picks the page by toolName at runtime
-│   ├── tools/                  # One folder per tool UI
-│   │   └── hello/              # hello_world tool UI
-│   │       └── index.tsx       # Default-exported page component, registered in router.tsx
-│   ├── components/ui/          # shadcn/ui components
-│   ├── lib/utils.ts            # cn() helper
-│   └── globals.css             # Tailwind base styles
-├── index.html                  # Single Vite entry (imports web/app.tsx)
-├── package.json
-├── tsconfig.json
-├── biome.json
-├── vite.config.ts
-├── components.json             # shadcn/ui config
-└── app.json                    # Deco mesh config
-```
-
-## Development
+Useful commands:
 
 ```bash
-# Run API server + web build concurrently
-bun run dev
-
-# API server only (port 3001)
-bun run dev:api
-
-# Web build only (watch mode)
-bun run dev:web
+bun run dev:api    # MCP API only, port 3001
+bun run dev:web    # UI build in watch mode
+bun run check      # TypeScript validation
+bun test           # Existing Bun test suite
+bun run build      # Production client and server build
 ```
 
-### Connecting to deco Studio
+## Architecture
 
-There are two ways to connect this app to Studio: importing it from GitHub (the regular way to install an app), or pointing Studio at a local tunnel (faster to iterate on while developing).
-
-#### Option A: Import from GitHub
-
-1. Top-left corner of Studio, click the agent selector.
-2. Click **Import**.
-3. Follow the regular import steps from there.
-
-#### Option B: Local tunnel (faster for testing)
-
-Expose your local server through a tunnel:
-
-```bash
-bun run start
-# Tunnel started
-#     -> 🌐 Preview: https://<your-id>.deco.host
-#     -> 🔗 MCP URL: https://<your-id>.deco.host/api/mcp
+```text
+api/
+  analysis/        Deterministic mining, scoring, centrality, and sequences
+  shopify/         Shopify Admin GraphQL integration and publication helpers
+  tools/           MCP tools for analysis, relationships, bundles, cross-sell, and up-sell
+  prompts/         Guided MCP entry points for safe agent workflows
+  resources/       MCP App resource serving the interactive UI
+web/
+  tools/discover-combinations/
+                    React commercial map, canvas, previews, and detail UI
 ```
 
-This runs the `deco` CLI ([`deco-cli`](https://www.npmjs.com/package/deco-cli) on npm, already listed as a devDependency — no global install needed).
+The API is platform-agnostic and exposed by `api/app.ts`. Vite builds the React UI into one MCP App resource, and the client router selects the appropriate screen from the tool name supplied by the MCP host.
 
-Then, in Studio:
+## Hackathon deliverables
 
-1. Bottom-left corner, click the gear icon (settings).
-2. Go to **Connections** → **Custom Connection**, and paste the tunnel's MCP URL:
-   ```
-   https://<your-id>.deco.host/api/mcp
-   ```
-3. On the new connection, open the "..." menu → **Select**, and assign it to an agent.
-4. Open that agent from Studio's home screen, go to its settings, and enable the tool's tabs under **Layout → Pinned Views**.
+- Public source repository: [williamcms/mcp-deco-hackathon](https://github.com/williamcms/mcp-deco-hackathon)
+- Product problem and solution: this README
+- Demonstration video: up to five minutes, following the [presentation script](docs/demo-script.md)
 
-### Adding a New Tool with UI
+## Responsible use
 
-All tool UIs are built into a single `dist/client/index.html` (all CSS/JS inlined via `vite-plugin-singlefile`) — there's no per-tool build step.
-
-1. **Create the tool** — `api/tools/my-tool.ts` using `createTool`, with `_meta.ui.resourceUri` pointing at the resource below
-2. **Register it** — add to the `tools` array in `api/tools/index.ts`
-3. **Create the UI** — `web/tools/my-tool/index.tsx`, a default-exported page component (it receives no props; it reads tool state via `useMcpState()`)
-4. **Register the page** — add it to `TOOL_PAGES` in `web/router.tsx`, keyed by the tool's `id`
-5. **Create the resource** — `api/resources/my-tool.ts`, serving the same shared `dist/client/index.html` with `mimeType: "text/html;profile=mcp-app"`
-
-### How the Tool Router Works
-
-```
-vite build
-  → bundles every web/tools/<name>/index.tsx into one dist/client/index.html
-  → at runtime, ToolRouter (web/router.tsx) reads `toolName` from the MCP host context
-  → looks it up in TOOL_PAGES and renders that page component
-```
-
-## Tech Stack
-
-- **Runtime**: [Bun](https://bun.sh) (default), deployable to any Web Standard runtime
-- **Server**: [@decocms/runtime](https://github.com/decocms/runtime) MCP server
-- **UI**: React 19 + [TanStack Router](https://tanstack.com/router) (hash-based) + [TanStack Query](https://tanstack.com/query)
-- **Styling**: [Tailwind CSS](https://tailwindcss.com) v4 + [shadcn/ui](https://ui.shadcn.com)
-- **MCP Apps**: [@modelcontextprotocol/ext-apps](https://www.npmjs.com/package/@modelcontextprotocol/ext-apps) SDK
-- **Build**: [Vite](https://vitejs.dev) + [vite-plugin-singlefile](https://github.com/nickreese/vite-plugin-singlefile)
-- **Linting**: [Biome](https://biomejs.dev)
-
-## How It Works
-
-1. The **app core** (`api/app.ts`) defines tools, resources, and middleware as a platform-agnostic `fetch` handler
-2. A **platform entrypoint** (`api/main.bun.ts`) starts the server using the platform's API
-3. **Tools** perform actions and can link to a UI via `_meta.ui.resourceUri`
-4. **Resources** serve single-file HTML bundles with `mimeType: "text/html;profile=mcp-app"`
-5. The **MCP App UI** connects to the host via `@modelcontextprotocol/ext-apps`, receives tool input/results, and renders an interactive display
-6. Vite builds every tool UI into a single self-contained HTML file (CSS + JS inlined), switched at runtime by `toolName`
-
-## Deployment
-
-### Multi-Platform
-
-The app uses a factory pattern that separates business logic (`api/app.ts`) from platform wiring. To deploy to a new platform, add a thin entrypoint file — see the [`add-deploy-target` skill](.claude/skills/add-deploy-target/SKILL.md) for step-by-step instructions.
-
-Supported targets out of the box:
-
-- **Bun** — `api/main.bun.ts` (default, used for local dev)
-
-Easy to add:
-
-- **Cloudflare Workers** — ~5 lines + `wrangler.toml`
-- **Deno** — ~5 lines
-- **Node.js** — ~5 lines + `@hono/node-server`
-- **AWS Lambda** — ~5 lines + `hono/aws-lambda`
-
-### Publish to deco
-
-1. Update `app.json` with your app's name, description, and connection URL
-2. Push to your repository — CI will validate the build
-3. Follow deco mesh publishing instructions to deploy
-
-## CI
-
-GitHub Actions runs on every push and pull request:
-
-- `bun run ci:check` — Biome lint + format check
-- `bun run check` — TypeScript type checking
-- `bun test` — Unit tests
-- `bun run build` — Production build
+- Treat every relationship as evidence from historical behavior, not a causal claim.
+- Review data volume, support, confidence, lift, margin coverage, and stock before acting.
+- Use previews before Shopify writes and obtain explicit merchant approval.
+- Record demos with a test store and never expose access tokens, customer data, or a production storefront configuration.
