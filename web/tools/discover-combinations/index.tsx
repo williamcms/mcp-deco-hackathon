@@ -1,5 +1,6 @@
 import type { CreateBundleOutput } from "@/api/tools/create-bundle.ts";
 import type { DiscoverCombinationsInput, DiscoverCombinationsOutput } from "@/api/tools/discover-combinations.ts";
+import type { CommercialCampaignEvidence } from "@/api/shopify/revenue-loop.ts";
 import { ErrorScreen } from "@/web/components/error-screen.tsx";
 import { Badge } from "@/web/components/ui/badge.tsx";
 import { ChartContainer } from "@/web/components/ui/chart.tsx";
@@ -7,6 +8,16 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsContent } from "@/web/components/ui/tabs.tsx";
 import { useMcpApp, useMcpHostContext, useMcpState } from "@/web/context.tsx";
 import { cn } from "@/web/lib/utils.ts";
+<<<<<<< Updated upstream
+=======
+import { BundleGraphSection } from "@/web/tools/discover-combinations/bundle-graph-section.tsx";
+import { CampaignHistoryPanel } from "@/web/tools/discover-combinations/campaign-history.tsx";
+import { CommercialOpportunitiesSection } from "@/web/tools/discover-combinations/commercial-opportunities.tsx";
+import { CrossSellPreview } from "@/web/tools/discover-combinations/cross-sell-preview.tsx";
+import { ShopifyReadinessPanel } from "@/web/tools/discover-combinations/shopify-readiness.tsx";
+import { UpsellPreview } from "@/web/tools/discover-combinations/upsell-preview.tsx";
+import { WatchlistPanel } from "@/web/tools/discover-combinations/watchlist.tsx";
+>>>>>>> Stashed changes
 import { buildExplainPrompt, combinationTitle } from "@/web/tools/discover-combinations/explain-prompt.ts";
 import { ActionMenu, HoverTip, Modal } from "@/web/tools/discover-combinations/floating.tsx";
 import { METRICS, type MetricKey } from "@/web/tools/discover-combinations/metrics-copy.ts";
@@ -77,7 +88,7 @@ function Page({ children }: { children: ReactNode }) {
   return (
     <div className="flex flex-col bg-background w-full h-full overflow-hidden">
       <div className="flex-1 p-0 overflow-auto">
-        <div className="mx-auto px-4 md:px-10 pt-8 md:pt-12 pb-6 md:pb-10 w-full max-w-300">
+        <div className="mx-auto px-4 md:px-10 pt-8 md:pt-12 pb-28 md:pb-32 w-full max-w-300">
           <div className="flex flex-col gap-10">{children}</div>
         </div>
       </div>
@@ -245,7 +256,7 @@ function FloatingTabNav({
   return (
     <div
       role="tablist"
-      className="bottom-6 left-1/2 z-3 fixed flex items-center gap-1 p-1 rounded-full -translate-x-1/2 floating-surface"
+      className="bottom-4 left-1/2 z-3 fixed flex max-w-[calc(100vw-2rem)] items-center gap-1 overflow-x-auto p-1 rounded-full -translate-x-1/2 floating-surface"
     >
       {indicator ? (
         <span
@@ -1571,6 +1582,38 @@ export default function DiscoverCombinationsPage() {
   // there's a modal with a spinner instead of a dead pause after the click.
   const [bundleModalOpen, setBundleModalOpen] = useState(false);
   const [bundleDiscountPct, setBundleDiscountPct] = useState(0);
+<<<<<<< Updated upstream
+=======
+  // Lets the close button abandon an in-flight create_bundle call instead of
+  // being stuck disabled until the response comes back.
+  const bundleAbortRef = useRef<AbortController | null>(null);
+
+  // Cross-sell preview opened by "Gerar cross-sell" no canvas de produtos
+  // ponte. create_cross_sell não tem UI própria (mesma razão do bundle).
+  // Guarda o request original junto do resultado, assim "confirmar" chama de
+  // novo com dryRun: false sem precisar reconstruir os ids a partir do result.
+  const [crossSellPreview, setCrossSellPreview] = useState<{
+    productId: string;
+    relatedProductIds: string[];
+    campaign?: CommercialCampaignEvidence;
+    result: CreateCrossSellOutput;
+  } | null>(null);
+  const [crossSellModalOpen, setCrossSellModalOpen] = useState(false);
+  const [crossSellBusy, setCrossSellBusy] = useState(false);
+  const [crossSellError, setCrossSellError] = useState<string | null>(null);
+
+  // Upsell preview, aberto pela tabela de Upsell. Mesmo padrão do cross-sell:
+  // create_upsell não tem UI própria, então o resultado vem pra cá.
+  const [upsellPreview, setUpsellPreview] = useState<{
+    productId: string;
+    relatedProductIds: string[];
+    campaign?: CommercialCampaignEvidence;
+    result: CreateUpsellOutput;
+  } | null>(null);
+  const [upsellModalOpen, setUpsellModalOpen] = useState(false);
+  const [upsellBusy, setUpsellBusy] = useState(false);
+  const [upsellError, setUpsellError] = useState<string | null>(null);
+>>>>>>> Stashed changes
 
   const [sortBy, setSortBy] = useState<SortKey>("score");
   const [glossaryOpen, setGlossaryOpen] = useState(false);
@@ -1665,7 +1708,116 @@ export default function DiscoverCombinationsPage() {
     setBundleError(null);
     setBundleModalOpen(true);
     setBundleDiscountPct(0);
+<<<<<<< Updated upstream
     runCreateBundle(combinationTitle(combination), components, true, 0);
+=======
+    runCreateBundle(title, components, true, 0);
+  }
+
+  /**
+   * Calls create_cross_sell directly on the server, same reason as
+   * runCreateBundle above. No UI of its own — the result comes straight here.
+   */
+  async function runCreateCrossSell(
+    productId: string,
+    relatedProductIds: string[],
+    dryRun: boolean,
+    campaign?: CommercialCampaignEvidence,
+  ) {
+    if (!app || crossSellBusy) return;
+
+    setCrossSellBusy(true);
+    setCrossSellError(null);
+
+    try {
+      const response = await app.callServerTool({
+        name: "create_cross_sell",
+        arguments: { productId, relatedProductIds, dryRun, ...(campaign ? { campaign } : {}) },
+      });
+
+      if (response.isError) throw new Error(extractToolErrorText(response));
+
+      const structured = response.structuredContent as CreateCrossSellOutput | undefined;
+      if (!structured) {
+        throw new Error("A tool respondeu sem conteúdo estruturado.");
+      }
+
+      setCrossSellPreview({ productId, relatedProductIds, campaign, result: structured });
+    } catch (error) {
+      setCrossSellError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setCrossSellBusy(false);
+    }
+  }
+
+  function startCrossSellPreview(
+    productId: string,
+    relatedProductIds: string[],
+    campaign?: CommercialCampaignEvidence,
+  ) {
+    setCrossSellPreview(null);
+    setCrossSellError(null);
+    setCrossSellModalOpen(true);
+    runCreateCrossSell(productId, relatedProductIds, true, campaign);
+  }
+
+  function cancelCrossSellModal() {
+    setCrossSellModalOpen(false);
+    setCrossSellPreview(null);
+    setCrossSellError(null);
+    setCrossSellBusy(false);
+  }
+
+  /** Chama create_upsell direto no servidor — mesma razão de runCreateBundle. */
+  async function runCreateUpsell(
+    productId: string,
+    relatedProductIds: string[],
+    dryRun: boolean,
+    campaign?: CommercialCampaignEvidence,
+  ) {
+    if (!app || upsellBusy) return;
+
+    setUpsellBusy(true);
+    setUpsellError(null);
+
+    try {
+      const response = await app.callServerTool({
+        name: "create_upsell",
+        arguments: { productId, relatedProductIds, dryRun, ...(campaign ? { campaign } : {}) },
+      });
+
+      if (response.isError) throw new Error(extractToolErrorText(response));
+
+      const structured = response.structuredContent as CreateUpsellOutput | undefined;
+      if (!structured) {
+        throw new Error("A tool respondeu sem conteúdo estruturado.");
+      }
+
+      setUpsellPreview({ productId, relatedProductIds, campaign, result: structured });
+    } catch (error) {
+      setUpsellError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setUpsellBusy(false);
+    }
+  }
+
+  function startUpsellPreview(
+    productId: string,
+    relatedProductIds: string[],
+    campaign?: CommercialCampaignEvidence,
+  ) {
+    setUpsellPreview(null);
+    setUpsellError(null);
+    setUpsellModalOpen(true);
+    runCreateUpsell(productId, relatedProductIds, true, campaign);
+  }
+
+  function cancelUpsellModal() {
+    setUpsellModalOpen(false);
+    setUpsellPreview(null);
+    setUpsellError(null);
+    setUpsellBusy(false);
+>>>>>>> Stashed changes
   }
 
   function changeBundleDiscount(value: number) {
@@ -1798,6 +1950,10 @@ export default function DiscoverCombinationsPage() {
             }
           />
         </Card>
+
+        <Section title="Prontidão da conexão" description="Verifique escopos e vitrine antes de iniciar uma análise ou publicar uma ação.">
+          <ShopifyReadinessPanel />
+        </Section>
       </Page>
     );
   }
@@ -1832,6 +1988,7 @@ export default function DiscoverCombinationsPage() {
   });
 
   const tabOptions: TabOption[] = [
+    { key: "central", label: "Central comercial" },
     { key: "combinations", label: "Combinações" },
     { key: "bundles", label: "Bundles", badge: bundles.draft.length },
     { key: "rules", label: "Regras & sequências" },
@@ -1900,6 +2057,40 @@ export default function DiscoverCombinationsPage() {
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <FloatingTabNav value={activeTab} onChange={setActiveTab} options={tabOptions} />
+
+        <TabsContent value="central">
+          <div className="flex flex-col gap-10">
+            <Section
+              title="Prontidão da conexão"
+              description="Capacidades disponíveis na Shopify para analisar, publicar e validar esta oportunidade."
+            >
+              <ShopifyReadinessPanel />
+            </Section>
+
+            <CommercialOpportunitiesSection
+              opportunities={result.opportunities}
+              analysisGeneratedAt={result.analysis.generatedAt}
+              formatters={formatters}
+              onCreateBundle={startBundlePreview}
+              onCreateCrossSell={startCrossSellPreview}
+              onCreateUpsell={startUpsellPreview}
+            />
+
+            <Section
+              title="Revenue Loop"
+              description="Acompanhe o que foi publicado e compare janelas iguais antes e depois, sem transformar correlação em causalidade."
+            >
+              <CampaignHistoryPanel formatters={formatters} />
+            </Section>
+
+            <Section
+              title="Watchlist comercial"
+              description="Mantenha produtos importantes em uma fila de revisão manual, persistente na Shopify."
+            >
+              <WatchlistPanel opportunities={result.opportunities} />
+            </Section>
+          </div>
+        </TabsContent>
 
         <TabsContent value="combinations">
           <div className="flex flex-col gap-10">
@@ -2038,6 +2229,71 @@ export default function DiscoverCombinationsPage() {
         </div>
       </Modal>
 
+<<<<<<< Updated upstream
+=======
+      <Modal open={crossSellModalOpen} onClose={cancelCrossSellModal} title="Gerar cross-sell">
+        <div className="flex flex-col gap-4">
+          {crossSellBusy && !crossSellPreview && !crossSellError ? (
+            <Spinner label="Calculando o cross-sell..." />
+          ) : (
+            <>
+              {crossSellError ? (
+                <Alert icon={<AlertTriangle className="size-4" />} tone="danger">
+                  {crossSellError}
+                </Alert>
+              ) : null}
+              {crossSellPreview ? (
+                <CrossSellPreview
+                  result={crossSellPreview.result}
+                  busy={crossSellBusy}
+                  onPublish={() =>
+                    runCreateCrossSell(
+                      crossSellPreview.productId,
+                      crossSellPreview.relatedProductIds,
+                      false,
+                      crossSellPreview.campaign,
+                    )
+                  }
+                  onDismiss={cancelCrossSellModal}
+                />
+              ) : null}
+            </>
+          )}
+        </div>
+      </Modal>
+
+      <Modal open={upsellModalOpen} onClose={cancelUpsellModal} title="Gerar upsell">
+        <div className="flex flex-col gap-4">
+          {upsellBusy && !upsellPreview && !upsellError ? (
+            <Spinner label="Calculando o upsell..." />
+          ) : (
+            <>
+              {upsellError ? (
+                <Alert icon={<AlertTriangle className="size-4" />} tone="danger">
+                  {upsellError}
+                </Alert>
+              ) : null}
+              {upsellPreview ? (
+                <UpsellPreview
+                  result={upsellPreview.result}
+                  busy={upsellBusy}
+                  onPublish={() =>
+                    runCreateUpsell(
+                      upsellPreview.productId,
+                      upsellPreview.relatedProductIds,
+                      false,
+                      upsellPreview.campaign,
+                    )
+                  }
+                  onDismiss={cancelUpsellModal}
+                />
+              ) : null}
+            </>
+          )}
+        </div>
+      </Modal>
+
+>>>>>>> Stashed changes
       <Modal open={glossaryOpen} onClose={() => setGlossaryOpen(false)} title="Como ler estes números">
         <div className="flex flex-col gap-6">
           <div className="flex flex-col gap-2">

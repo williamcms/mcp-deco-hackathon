@@ -1,23 +1,40 @@
 {
 	"scopeName": "deco",
-	"name": "mcp-app",
-	"friendlyName": "MCP App Template",
-	"description": "Starter template for building MCP Apps on deco with interactive UIs.",
-	"icon": "",
+	"name": "mago-de-receita",
+	"friendlyName": "Mago de Receita",
+	"description": "Copiloto comercial para Shopify: descobre, explica, publica e acompanha oportunidades de bundle, cross-sell e upsell.",
+	"icon": "https://raw.githubusercontent.com/williamcms/mcp-deco-hackathon/main/public/mago-de-receita.svg",
 	"connection": {
 		"type": "HTTP",
-		"url": "https://your-app.decocache.com/api/mcp",
+		"url": "https://mcp-deco-hackathon.decocache.com/api/mcp",
 		"configSchema": {
 			"type": "object",
-			"properties": {},
-			"required": []
+			"properties": {
+				"shopDomain": {
+					"type": "string",
+					"title": "Domínio Shopify",
+					"description": "Ex.: minha-loja.myshopify.com"
+				},
+				"adminAccessToken": {
+					"type": "string",
+					"title": "Admin API access token",
+					"format": "password",
+					"description": "Token com read_orders, read_products, read_inventory, read_customers e write_products."
+				},
+				"apiVersion": {
+					"type": "string",
+					"title": "Versão da Shopify Admin API",
+					"default": "2025-01"
+				}
+			},
+			"required": ["shopDomain", "adminAccessToken"]
 		}
 	},
 	"unlisted": true,
 	"metadata": {
-		"categories": [],
+		"categories": ["ecommerce", "analytics"],
 		"official": false,
-		"tags": ["template", "mcp-app"],
-		"short_description": "Starter template for MCP Apps on deco."
+		"tags": ["shopify", "commerce", "analytics", "cross-sell", "mcp"],
+		"short_description": "Transforma pedidos Shopify em ações comerciais explicáveis, publicáveis e acompanháveis."
 	}
 }

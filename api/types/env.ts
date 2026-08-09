@@ -12,7 +12,7 @@ export const StateSchema = z.object({
 		.string()
 		.optional()
 		.describe(
-			"Admin API access token (shpat_...). Escopos necessários: read_orders, read_products, read_inventory. Também aceita SHOPIFY_ADMIN_ACCESS_TOKEN.",
+			"Admin API access token (shpat_...). Necessários para análise: read_orders, read_products e read_inventory. Para sequência de compra: read_customers. Para publicar bundle/cross-sell/upsell: write_products. Para pedidos anteriores aos últimos 60 dias: read_all_orders. Também aceita SHOPIFY_ADMIN_ACCESS_TOKEN.",
 		),
 	apiVersion: z
 		.string()

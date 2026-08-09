@@ -190,7 +190,9 @@ export interface FetchOrdersOptions {
    * Pede o cliente de cada pedido. Exige o escopo read_customers — quem usa
    * deve tratar a falha e reconsultar sem o campo.
    */
-  includeCustomer?: boolean;
+	includeCustomer?: boolean;
+	/** Optional upper boundary for a bounded historical window. */
+	until?: Date;
 }
 
 export async function fetchOrders(
@@ -200,7 +202,10 @@ export async function fetchOrders(
   options: FetchOrdersOptions = {},
 ): Promise<FetchOrdersResult> {
   const graphqlQuery = buildOrdersQuery(options.includeCustomer === true);
-  const query = `created_at:>='${since.toISOString()}'`;
+  const query = [
+    `created_at:>='${since.toISOString()}'`,
+    ...(options.until ? [`created_at:<='${options.until.toISOString()}'`] : []),
+  ].join(" AND ");
   const orders: ShopifyOrder[] = [];
   let after: string | null = null;
   let truncated = false;

@@ -1,7 +1,7 @@
 {
-	"name": "mcp-app",
+	"name": "mago-de-receita",
 	"version": "0.1.0",
-	"description": "MCP App template for deco — starter for building MCP Apps with interactive UIs",
+	"description": "Copiloto comercial para Shopify que transforma pedidos em bundles, cross-sells e upsells explicáveis.",
 	"private": true,
 	"type": "module",
 	"scripts": {

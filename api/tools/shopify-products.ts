@@ -1,5 +1,6 @@
 import { createTool } from "@decocms/runtime/tools";
 import { z } from "zod";
+import { resolveCredentials, shopifyGraphQL } from "../shopify/client.ts";
 import type { Env } from "../types/env.ts";
 
 export const shopifyProductsInputSchema = z.object({
@@ -44,7 +45,7 @@ const QUERY = /* GraphQL */ `
 	}
 `;
 
-export const shopifyProductsTool = (_env: Env) =>
+export const shopifyProductsTool = (env: Env) =>
 	createTool({
 		id: "shopify_products",
 		description:
@@ -58,60 +59,29 @@ export const shopifyProductsTool = (_env: Env) =>
 			openWorldHint: true,
 		},
 		execute: async ({ context }) => {
-			const domain = process.env.SHOPIFY_SHOP_DOMAIN;
-			const token = process.env.SHOPIFY_ADMIN_ACCESS_TOKEN;
-			const version = process.env.SHOPIFY_API_VERSION || "2024-10";
-
-			if (!domain || !token) {
-				throw new Error(
-					"Faltam SHOPIFY_SHOP_DOMAIN e/ou SHOPIFY_ADMIN_ACCESS_TOKEN no .env",
-				);
-			}
-
-			const response = await fetch(
-				`https://${domain}/admin/api/${version}/graphql.json`,
-				{
-					method: "POST",
-					headers: {
-						"Content-Type": "application/json",
-						"X-Shopify-Access-Token": token,
-					},
-					body: JSON.stringify({
-						query: QUERY,
-						variables: { limit: context.limit },
-					}),
-				},
-			);
-
-			if (!response.ok) {
-				throw new Error(
-					`Shopify respondeu HTTP ${response.status}. Confira o domínio (.myshopify.com), o token e a versão da API.`,
-				);
-			}
-
-			const body = await response.json();
-
-			if (body.errors) {
-				throw new Error(`Shopify: ${JSON.stringify(body.errors)}`);
-			}
-
-			// Monta só os campos declarados no outputSchema — campo extra faz o MCP
-			// rejeitar a resposta inteira.
-			return {
-				shop: body.data.shop.name,
-				products: body.data.products.nodes.map(
-					(product: {
+			const credentials = resolveCredentials(env);
+			const body = await shopifyGraphQL<{
+				shop: { name: string };
+				products: {
+					nodes: Array<{
 						title: string;
 						handle: string;
 						status: string;
 						totalInventory: number | null;
-					}) => ({
-						title: product.title,
-						handle: product.handle,
-						status: product.status,
-						totalInventory: product.totalInventory ?? 0,
-					}),
-				),
+					}>;
+				};
+			}>(credentials, QUERY, { limit: context.limit });
+
+			// Monta só os campos declarados no outputSchema — campo extra faz o MCP
+			// rejeitar a resposta inteira.
+			return {
+				shop: body.shop.name,
+				products: body.products.nodes.map((product) => ({
+					title: product.title,
+					handle: product.handle,
+					status: product.status,
+					totalInventory: product.totalInventory ?? 0,
+				})),
 			};
 		},
 	});

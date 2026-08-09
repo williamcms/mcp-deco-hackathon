@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title desc">
+  <title id="title">Mago de Receita</title>
+  <desc id="desc">Um grafo comercial com uma estrela central.</desc>
+  <rect width="128" height="128" rx="28" fill="#171717"/>
+  <path d="M35 85 57 65m14 0 22 20M64 34v25" fill="none" stroke="#e5e5e5" stroke-linecap="round" stroke-width="6"/>
+  <circle cx="35" cy="86" r="10" fill="#737373"/>
+  <circle cx="93" cy="86" r="10" fill="#737373"/>
+  <circle cx="64" cy="34" r="10" fill="#737373"/>
+  <circle cx="64" cy="65" r="19" fill="#f5f5f5"/>
+  <path d="m64 51 4.2 9.8 10.6.9-8 7 2.4 10.3-9.2-5.5-9.2 5.5 2.4-10.3-8-7 10.6-.9L64 51Z" fill="#171717"/>
+</svg>

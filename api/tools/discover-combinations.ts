@@ -1,6 +1,8 @@
 import { createTool } from "@decocms/runtime/tools";
 import { z } from "zod";
 import { discoverCombinations } from "../analysis/discover.ts";
+import { buildCommercialOpportunities } from "../analysis/opportunities.ts";
+import { createAnalysisSnapshotKey, storeAnalysisSnapshot } from "../analysis/snapshots.ts";
 import { aggregate, round, toNumber } from "../shopify/aggregate.ts";
 import { fetchBundleProducts, summarizeBundles } from "../shopify/bundles.ts";
 import { resolveCredentials } from "../shopify/client.ts";
@@ -214,7 +216,43 @@ const bundleSummarySchema = z.object({
   onlineStoreUrl: z.string().nullable(),
 });
 
+const commercialOpportunitySchema = z.object({
+	id: z.string(),
+	kind: z.enum(["combination", "upsell"]),
+	title: z.string(),
+	description: z.string(),
+	status: z.enum(["ready", "review", "observe"]),
+	recommendedAction: z.enum(["bundle", "cross_sell", "upsell", "observe"]),
+	recommendedScore: z.number().describe("0 a 100 — prontidão determinística da melhor ação"),
+	actions: z.array(
+		z.object({
+			type: z.enum(["bundle", "cross_sell", "upsell"]),
+			score: z.number(),
+			label: z.string(),
+			rationale: z.string(),
+		}),
+	),
+	products: z.array(z.object({ id: z.string(), title: z.string() })),
+	sourceProductId: z.string().describe("Produto central para uma ação de cross-sell ou upsell"),
+	relatedProductIds: z.array(z.string()),
+	metrics: z.object({
+		support: z.number().nullable(),
+		supportCount: z.number().nullable(),
+		confidence: z.number().nullable(),
+		lift: z.number().nullable(),
+		incrementalMargin: z.number().nullable(),
+		inventoryLevel: z.enum(["high", "medium", "low", "unknown"]).nullable(),
+		priceUplift: z.number().nullable(),
+		priceUpliftPct: z.number().nullable(),
+	}),
+	caveats: z.array(z.string()),
+});
+
 export const discoverCombinationsOutputSchema = z.object({
+  analysis: z.object({
+    generatedAt: z.string().describe("Quando a análise foi gerada"),
+    snapshotExpiresAt: z.string().describe("Até quando uma pergunta de relacionamento pode reutilizar esta análise"),
+  }),
   period: z.object({
     days: z.number(),
     from: z.string(),
@@ -241,6 +279,22 @@ export const discoverCombinationsOutputSchema = z.object({
   combinations: z.array(combinationSchema),
   rules: z.array(ruleSchema),
   sequences: z.array(sequenceSchema),
+<<<<<<< Updated upstream
+=======
+  bundleCentrality: z
+    .array(productCentralitySchema)
+    .describe(
+      "Bundle Centrality: todo produto visto na janela, com score de quão 'produto ponte' ele é, suas relações de cross-sell e próxima compra, e se está isolado. Ordenado por centralityScore desc.",
+    ),
+  upsell: z
+    .array(productUpsellSchema)
+    .describe(
+      "Upsell: para cada produto, qual é a versão superior dele no catálogo (mesmo tipo de produto, mais caro). É uma REGRA DE CATÁLOGO, não Market Basket Analysis — não afirma que clientes fazem esse upgrade, só que a versão melhor existe e custa X% mais. Ordenado pelos produtos mais vendidos.",
+    ),
+	opportunities: z
+		.array(commercialOpportunitySchema)
+		.describe("Fila curta de próximas ações comerciais, calculada deterministicamente a partir das métricas existentes."),
+>>>>>>> Stashed changes
   sales: z.object({
     currency: z.string(),
     summary: salesSummarySchema,
@@ -259,6 +313,26 @@ export const discoverCombinationsOutputSchema = z.object({
 
 export type DiscoverCombinationsOutput = z.infer<typeof discoverCombinationsOutputSchema>;
 
+/** Parameters that determine whether two discovery results can safely share a snapshot. */
+export function getDiscoverSnapshotKey(shopDomain: string, context: DiscoverCombinationsInput): string {
+	return createAnalysisSnapshotKey(shopDomain, {
+		periodDays: context.periodDays ?? 60,
+		campaignDays: context.campaignDays ?? 30,
+		algorithm: context.algorithm ?? "auto",
+		minSupport: context.minSupport ?? 0.01,
+		minOrders: context.minOrders ?? 3,
+		minConfidence: context.minConfidence ?? 0.1,
+		minLift: context.minLift ?? 1.1,
+		maxItemsetSize: context.maxItemsetSize ?? 3,
+		maxCombinations: context.maxCombinations ?? 25,
+		maxRules: context.maxRules ?? 25,
+		sequenceWindowDays: context.sequenceWindowDays ?? 60,
+		includeSequence: context.includeSequence ?? true,
+		includeCancelled: context.includeCancelled ?? false,
+		maxOrders: context.maxOrders ?? 500,
+	});
+}
+
 // ---------------------------------------------------------------------------
 // Tool
 // ---------------------------------------------------------------------------
@@ -267,9 +341,9 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 export const discoverCombinationsTool = (env: Env) =>
   createTool({
-    id: "discover_combinations",
-    description:
-      "Etapa 2 da descoberta: roda market basket analysis (Apriori ou FP-Growth) sobre os pedidos da Shopify e devolve as combinações de produtos que valem virar campanha. Para cada uma calcula support, confidence, lift, margem incremental (descontado o acaso) e viabilidade de estoque, além de regras de associação A -> B, análise de sequência de compra (o que o cliente volta para comprar e em quantos dias), uma visão geral de vendas do mesmo período (receita, ticket médio, série diária — geral e só de bundles — e os pedidos mais recentes) e a lista de bundles da loja (rascunho aguardando aprovação e já publicados). Use quando precisar decidir quais kits, combos ou cross-sell promover.",
+		id: "discover_combinations",
+		description:
+			"Etapa 2 da descoberta: roda market basket analysis (Apriori ou FP-Growth) sobre os pedidos da Shopify e devolve as combinações de produtos que valem virar campanha. Para cada uma calcula support, confidence, lift, margem incremental (descontado o acaso) e viabilidade de estoque, além de regras de associação A -> B, análise de sequência de compra (o que o cliente volta para comprar e em quantos dias), uma visão geral de vendas do mesmo período (receita, ticket médio, série diária — geral e só de bundles — e os pedidos mais recentes) e a lista de bundles da loja (rascunho aguardando aprovação e já publicados). O resultado fica disponível por cinco minutos para perguntas de relacionamento sobre o mesmo recorte. Use quando precisar decidir quais kits, combos ou cross-sell promover.",
     inputSchema: discoverCombinationsInputSchema,
     outputSchema: discoverCombinationsOutputSchema,
     _meta: { ui: { resourceUri: DISCOVER_COMBINATIONS_RESOURCE_URI } },
@@ -345,7 +419,11 @@ export const discoverCombinationsTool = (env: Env) =>
       const bundleProducts = await fetchBundleProducts(credentials, BUNDLES_LIMIT);
       const bundles = summarizeBundles(bundleProducts.products, credentials.shopDomain);
 
-      return {
+      const output: DiscoverCombinationsOutput = {
+        analysis: {
+          generatedAt: "",
+          snapshotExpiresAt: "",
+        },
         period: {
           days: periodDays,
           from: from.toISOString(),
@@ -372,6 +450,16 @@ export const discoverCombinationsTool = (env: Env) =>
         combinations: result.combinations,
         rules: result.rules,
         sequences: result.sequences,
+<<<<<<< Updated upstream
+=======
+        bundleCentrality: result.bundleCentrality,
+        upsell: result.upsell,
+		opportunities: buildCommercialOpportunities({
+			combinations: result.combinations,
+			centrality: result.bundleCentrality,
+			upsell: result.upsell,
+		}),
+>>>>>>> Stashed changes
         sales: {
           currency: sales.currency,
           summary: sales.summary,
@@ -387,6 +475,14 @@ export const discoverCombinationsTool = (env: Env) =>
         },
         warnings,
       };
+
+			const snapshot = storeAnalysisSnapshot(getDiscoverSnapshotKey(credentials.shopDomain, context), output);
+			output.analysis = {
+				generatedAt: snapshot.createdAt,
+				snapshotExpiresAt: snapshot.expiresAt,
+			};
+
+			return output;
     },
   });
 

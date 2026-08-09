@@ -1,165 +1,109 @@
-# MCP App Template
+# Mago de Receita
 
-Official starter for building MCP Apps on deco — interactive UIs powered by the Model Context Protocol.
+> Dos pedidos históricos à receita publicada na Shopify.
 
-## Quick Start
+Mago de Receita é um copiloto comercial para lojas Shopify. Ele encontra relações de compra nos pedidos históricos, explica por que uma oportunidade é relevante, permite publicar a ação na Shopify e prepara o acompanhamento do resultado.
+
+## O problema
+
+Lojistas acumulam pedidos, produtos e dados de estoque, mas transformar isso em bundles, cross-sells e upsells ainda costuma depender de planilhas, intuição ou ferramentas desconectadas da execução. Isso deixa oportunidades de ticket médio e margem sem exploração — e pode promover produtos sem estoque ou sem evidência suficiente.
+
+## A solução
+
+O Mago de Receita usa Market Basket Analysis e sequências de compra para construir um mapa explorável de relacionamento comercial do catálogo.
+
+```text
+Pedidos Shopify
+    -> relações estatísticas e centralidade
+    -> oportunidade explicável
+    -> aprovação do lojista
+    -> publicação nativa na Shopify
+    -> observação do resultado
+```
+
+Ele não trata correlação como causalidade. Toda recomendação mostra as métricas que a sustentam, o tamanho da amostra, margem incremental e restrições de estoque.
+
+## O que já faz
+
+- Identifica produtos ponte com Bundle Centrality.
+- Mostra cross-sell em um canvas navegável, inspirado em ferramentas de fluxo sem copiar a interface de terceiros.
+- Mostra upsell de catálogo e sequência de recompra em listas separadas.
+- Calcula support, confidence, lift, margem incremental e viabilidade de estoque.
+- Permite selecionar produtos do canvas e publicar cross-sell como produtos complementares nativos da Shopify.
+- Cria bundles com a revisão e aprovação já existentes.
+- Publica upsells como produtos relacionados nativos da Shopify.
+- Prioriza uma “próxima melhor ação” de forma determinística, combinando evidência, margem, estoque e adequação do formato comercial.
+- Registra campanhas confirmadas em metafields próprios da Shopify e compara períodos iguais antes/depois como leitura observacional.
+- Mantém uma watchlist manual de produtos para separar oportunidades prontas, campanhas em monitoramento e dados ainda insuficientes.
+- Explica métricas e limitações sem usar IA para inventar números.
+
+## Arquitetura
+
+```text
+api/analysis/   mineração, métricas, centralidade, próxima ação e impacto observacional
+api/shopify/    leitura/escrita na Admin GraphQL API e registros duráveis em metafields
+api/tools/      ferramentas MCP e contratos Zod
+web/tools/      interface React dentro do host MCP
+```
+
+O projeto é uma MCP App da deco: a API expõe ferramentas MCP e o React renderiza uma experiência interativa no host.
+
+## Configuração Shopify
+
+Configure na conexão MCP, ou como variáveis de ambiente:
+
+```text
+SHOPIFY_SHOP_DOMAIN=minha-loja.myshopify.com
+SHOPIFY_ADMIN_ACCESS_TOKEN=shpat_...
+SHOPIFY_API_VERSION=2025-01
+```
+
+Escopos necessários:
+
+| Capacidade | Escopos |
+| --- | --- |
+| Analisar pedidos, produtos, estoque e margem | `read_orders`, `read_products`, `read_inventory` |
+| Analisar sequência de compra | `read_customers` |
+| Consultar pedidos além da janela padrão | `read_all_orders` |
+| Criar bundle, cross-sell e upsell | `write_products` |
+
+O cross-sell é gravado no metafield padrão de produtos complementares da Shopify. Para ele aparecer na vitrine, o tema precisa ter o bloco de recomendações complementares ativo.
+
+## Desenvolvimento
 
 ```bash
-# Clone the template
-git clone https://github.com/decocms/mcp-app.git my-mcp-app
-cd my-mcp-app
-
-# Install dependencies
 bun install
-
-# Start development
 bun run dev
 ```
 
-## Project Structure
-
-```
-├── api/                        # MCP server (platform-agnostic)
-│   ├── app.ts                  # App core — tools, resources, middleware
-│   ├── main.bun.ts             # Bun entrypoint (local dev)
-│   ├── tools/
-│   │   ├── index.ts            # Tool registry
-│   │   └── hello.ts            # Example tool (hello_world)
-│   ├── resources/
-│   │   └── hello.ts            # MCP App resource (serves HTML)
-│   └── types/
-│       └── env.ts              # StateSchema + Env type
-├── web/                        # React UI (one unified MCP App bundle)
-│   ├── app.tsx                  # Entry point — renders McpProvider + AppRouter
-│   ├── context.tsx               # McpProvider, useMcpState/useMcpApp/... hooks
-│   ├── router.tsx                # ToolRouter — picks the page by toolName at runtime
-│   ├── tools/                  # One folder per tool UI
-│   │   └── hello/              # hello_world tool UI
-│   │       └── index.tsx       # Default-exported page component, registered in router.tsx
-│   ├── components/ui/          # shadcn/ui components
-│   ├── lib/utils.ts            # cn() helper
-│   └── globals.css             # Tailwind base styles
-├── index.html                  # Single Vite entry (imports web/app.tsx)
-├── package.json
-├── tsconfig.json
-├── biome.json
-├── vite.config.ts
-├── components.json             # shadcn/ui config
-└── app.json                    # Deco mesh config
-```
-
-## Development
+Comandos de verificação:
 
 ```bash
-# Run API server + web build concurrently
-bun run dev
-
-# API server only (port 3001)
-bun run dev:api
-
-# Web build only (watch mode)
-bun run dev:web
+bun run ci:check
+bun run check
+bun run build
 ```
 
-### Connecting to deco Studio
+## Demonstração do hackathon
 
-There are two ways to connect this app to Studio: importing it from GitHub (the regular way to install an app), or pointing Studio at a local tunnel (faster to iterate on while developing).
+O roteiro de até cinco minutos está em [docs/demo-script.md](docs/demo-script.md). A narrativa é:
 
-#### Option A: Import from GitHub
+1. Pergunta comercial feita ao agente.
+2. Descoberta visual de um produto ponte.
+3. Evidência, margem e estoque para escolher a ação.
+4. Publicação confirmada na Shopify.
+5. Resultado observado e watchlist de uma ação previamente publicada.
 
-1. Top-left corner of Studio, click the agent selector.
-2. Click **Import**.
-3. Follow the regular import steps from there.
+## Limitações responsáveis
 
-#### Option B: Local tunnel (faster for testing)
+- A recomendação é baseada em comportamento histórico, não em causalidade.
+- Produtos complementares exigem suporte do tema para aparecer na página da vitrine.
+- Uma campanha recém-publicada fica em monitoramento até existir volume e tempo suficientes para observação.
+- Custos ausentes reduzem a cobertura de margem, mas não fazem o sistema inventar dados.
+- A watchlist é atualizada manualmente; não há scheduler automático sem uma configuração explícita de infraestrutura.
 
-Expose your local server through a tunnel:
+## Entregáveis
 
-```bash
-bun run start
-# Tunnel started
-#     -> 🌐 Preview: https://<your-id>.deco.host
-#     -> 🔗 MCP URL: https://<your-id>.deco.host/api/mcp
-```
-
-This runs the `deco` CLI ([`deco-cli`](https://www.npmjs.com/package/deco-cli) on npm, already listed as a devDependency — no global install needed).
-
-Then, in Studio:
-
-1. Bottom-left corner, click the gear icon (settings).
-2. Go to **Connections** → **Custom Connection**, and paste the tunnel's MCP URL:
-   ```
-   https://<your-id>.deco.host/api/mcp
-   ```
-3. On the new connection, open the "..." menu → **Select**, and assign it to an agent.
-4. Open that agent from Studio's home screen, go to its settings, and enable the tool's tabs under **Layout → Pinned Views**.
-
-### Adding a New Tool with UI
-
-All tool UIs are built into a single `dist/client/index.html` (all CSS/JS inlined via `vite-plugin-singlefile`) — there's no per-tool build step.
-
-1. **Create the tool** — `api/tools/my-tool.ts` using `createTool`, with `_meta.ui.resourceUri` pointing at the resource below
-2. **Register it** — add to the `tools` array in `api/tools/index.ts`
-3. **Create the UI** — `web/tools/my-tool/index.tsx`, a default-exported page component (it receives no props; it reads tool state via `useMcpState()`)
-4. **Register the page** — add it to `TOOL_PAGES` in `web/router.tsx`, keyed by the tool's `id`
-5. **Create the resource** — `api/resources/my-tool.ts`, serving the same shared `dist/client/index.html` with `mimeType: "text/html;profile=mcp-app"`
-
-### How the Tool Router Works
-
-```
-vite build
-  → bundles every web/tools/<name>/index.tsx into one dist/client/index.html
-  → at runtime, ToolRouter (web/router.tsx) reads `toolName` from the MCP host context
-  → looks it up in TOOL_PAGES and renders that page component
-```
-
-## Tech Stack
-
-- **Runtime**: [Bun](https://bun.sh) (default), deployable to any Web Standard runtime
-- **Server**: [@decocms/runtime](https://github.com/decocms/runtime) MCP server
-- **UI**: React 19 + [TanStack Router](https://tanstack.com/router) (hash-based) + [TanStack Query](https://tanstack.com/query)
-- **Styling**: [Tailwind CSS](https://tailwindcss.com) v4 + [shadcn/ui](https://ui.shadcn.com)
-- **MCP Apps**: [@modelcontextprotocol/ext-apps](https://www.npmjs.com/package/@modelcontextprotocol/ext-apps) SDK
-- **Build**: [Vite](https://vitejs.dev) + [vite-plugin-singlefile](https://github.com/nickreese/vite-plugin-singlefile)
-- **Linting**: [Biome](https://biomejs.dev)
-
-## How It Works
-
-1. The **app core** (`api/app.ts`) defines tools, resources, and middleware as a platform-agnostic `fetch` handler
-2. A **platform entrypoint** (`api/main.bun.ts`) starts the server using the platform's API
-3. **Tools** perform actions and can link to a UI via `_meta.ui.resourceUri`
-4. **Resources** serve single-file HTML bundles with `mimeType: "text/html;profile=mcp-app"`
-5. The **MCP App UI** connects to the host via `@modelcontextprotocol/ext-apps`, receives tool input/results, and renders an interactive display
-6. Vite builds every tool UI into a single self-contained HTML file (CSS + JS inlined), switched at runtime by `toolName`
-
-## Deployment
-
-### Multi-Platform
-
-The app uses a factory pattern that separates business logic (`api/app.ts`) from platform wiring. To deploy to a new platform, add a thin entrypoint file — see the [`add-deploy-target` skill](.claude/skills/add-deploy-target/SKILL.md) for step-by-step instructions.
-
-Supported targets out of the box:
-
-- **Bun** — `api/main.bun.ts` (default, used for local dev)
-
-Easy to add:
-
-- **Cloudflare Workers** — ~5 lines + `wrangler.toml`
-- **Deno** — ~5 lines
-- **Node.js** — ~5 lines + `@hono/node-server`
-- **AWS Lambda** — ~5 lines + `hono/aws-lambda`
-
-### Publish to deco
-
-1. Update `app.json` with your app's name, description, and connection URL
-2. Push to your repository — CI will validate the build
-3. Follow deco mesh publishing instructions to deploy
-
-## CI
-
-GitHub Actions runs on every push and pull request:
-
-- `bun run ci:check` — Biome lint + format check
-- `bun run check` — TypeScript type checking
-- `bun test` — Unit tests
-- `bun run build` — Production build
+- Repositório público: [williamcms/mcp-deco-hackathon](https://github.com/williamcms/mcp-deco-hackathon)
+- Vídeo demonstrativo: adicionar o link da submissão após o upload
+- Problema e solução: documentados neste README

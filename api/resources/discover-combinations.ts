@@ -14,9 +14,9 @@ function getDistPath(): string {
 export const discoverCombinationsAppResource = (_env: Env) =>
 	createPublicResource({
 		uri: DISCOVER_COMBINATIONS_RESOURCE_URI,
-		name: "Descoberta de combinações",
+		name: "Mago de Receita — oportunidades comerciais",
 		description:
-			"Dashboard da etapa 2: combinações de produtos rankeadas por lift, margem incremental e viabilidade de estoque, com as regras de associação e a análise de sequência de compra.",
+			"Mapa comercial Shopify: transforma pedidos em oportunidades de bundle, cross-sell e upsell com evidência estatística, margem e estoque.",
 		mimeType: RESOURCE_MIME_TYPE,
 		read: async () => {
 			const html = await readFile(getDistPath(), "utf-8");
