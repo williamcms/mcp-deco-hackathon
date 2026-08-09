@@ -1,4 +1,6 @@
 import type { CreateBundleOutput } from "@/api/tools/create-bundle.ts";
+import type { CreateCrossSellOutput } from "@/api/tools/create-cross-sell.ts";
+import type { CreateUpsellOutput } from "@/api/tools/create-upsell.ts";
 import type { DiscoverCombinationsInput, DiscoverCombinationsOutput } from "@/api/tools/discover-combinations.ts";
 import { ErrorScreen } from "@/web/components/error-screen.tsx";
 import { Badge } from "@/web/components/ui/badge.tsx";
@@ -8,6 +10,8 @@ import { Tabs, TabsContent } from "@/web/components/ui/tabs.tsx";
 import { useMcpApp, useMcpHostContext, useMcpState } from "@/web/context.tsx";
 import { cn } from "@/web/lib/utils.ts";
 import { BundleGraphSection } from "@/web/tools/discover-combinations/bundle-graph-section.tsx";
+import { CrossSellPreview } from "@/web/tools/discover-combinations/cross-sell-preview.tsx";
+import { UpsellPreview } from "@/web/tools/discover-combinations/upsell-preview.tsx";
 import { buildExplainPrompt, combinationTitle } from "@/web/tools/discover-combinations/explain-prompt.ts";
 import { ActionMenu, HoverTip, Modal } from "@/web/tools/discover-combinations/floating.tsx";
 import { METRICS, type MetricKey } from "@/web/tools/discover-combinations/metrics-copy.ts";
@@ -32,6 +36,7 @@ import { extractToolErrorText } from "@/web/utils/mcp-tool-result.ts";
 import {
   AlertTriangle,
   ArrowRight,
+  ArrowUpRight,
   ChevronRight,
   Coins,
   HelpCircle,
@@ -51,6 +56,7 @@ import { Area, AreaChart, CartesianGrid, Tooltip, XAxis, YAxis } from "recharts"
 
 type Combination = DiscoverCombinationsOutput["combinations"][number];
 type Sequence = DiscoverCombinationsOutput["sequences"][number];
+type Upsell = DiscoverCombinationsOutput["upsell"][number];
 
 const PERIODS = [7, 30, 60] as const;
 const TOOL_NAME = "discover_combinations";
@@ -794,6 +800,100 @@ function SequencesTable({ sequences, formatters }: { sequences: Sequence[]; form
               <TableCell className="tabular-nums text-right">{formatDaysBetween(sequence.medianDaysBetween)}</TableCell>
             </TableRow>
           ))}
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
+
+/**
+ * Upsell: a versão superior de cada produto. Diferente das outras tabelas
+ * desta tela, não sai de Market Basket Analysis — é uma regra sobre o
+ * catálogo (mesmo tipo de produto, mais caro). A descrição da seção diz isso
+ * explicitamente para ninguém ler os números como comportamento observado.
+ */
+function UpsellTable({
+  upsell,
+  formatters,
+  onCreateUpsell,
+}: {
+  upsell: Upsell[];
+  formatters: CombinationFormatters;
+  onCreateUpsell: (productId: string, relatedProductIds: string[]) => void;
+}) {
+  if (upsell.length === 0) {
+    return (
+      <Empty>
+        Nenhum upgrade encontrado. É preciso ter, no mesmo tipo de produto, uma versão mais cara vendida na janela.
+      </Empty>
+    );
+  }
+
+  return (
+    <div className="overflow-x-auto">
+      <Table>
+        <TableHeader>
+          <TableRow className="hover:bg-transparent">
+            <TableHead className="text-xs">Produto</TableHead>
+            <TableHead className="w-8" />
+            <TableHead className="text-xs">Versão superior sugerida</TableHead>
+            <TableHead className="text-xs text-right">
+              <span className="inline-flex justify-end items-center gap-1 w-full">
+                Acréscimo
+                <InfoTip content="Quanto o upgrade custa a mais que o produto base, pelo preço médio de venda de cada um na janela." />
+              </span>
+            </TableHead>
+            <TableHead className="text-xs text-right">
+              <span className="inline-flex justify-end items-center gap-1 w-full">
+                Score
+                <InfoTip content="0 a 100: o quanto é o mesmo tipo de produto, se o acréscimo de preço é plausível como upgrade, e se o candidato de fato vende. Não é uma medida estatística de comportamento — é uma regra sobre o catálogo." />
+              </span>
+            </TableHead>
+            <TableHead className="w-10" />
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {upsell.map((product) => {
+            const best = product.candidates[0];
+            if (!best) return null;
+
+            return (
+              <TableRow key={product.productId}>
+                <TableCell>
+                  <ProductChips products={[{ id: product.productId, title: product.title }]} />
+                  <span className="block mt-0.5 text-[11px] text-muted-foreground tabular-nums">
+                    {formatters.money.format(product.avgPrice)}
+                  </span>
+                </TableCell>
+                <TableCell className="text-muted-foreground">
+                  <ArrowUpRight className="size-3.5" />
+                </TableCell>
+                <TableCell>
+                  <ProductChips products={[{ id: best.productId, title: best.title }]} />
+                  <span className="block mt-0.5 text-[11px] text-muted-foreground tabular-nums">
+                    {formatters.money.format(best.avgPrice)}
+                  </span>
+                </TableCell>
+                <TableCell className="tabular-nums text-right">
+                  {formatters.money.format(best.priceUplift)}
+                  <span className="block text-[11px] text-muted-foreground">+{formatPercentage(best.priceUpliftPct)}</span>
+                </TableCell>
+                <TableCell className="font-medium tabular-nums text-right">{best.score}</TableCell>
+                <TableCell className="text-right">
+                  <ActionMenu
+                    label={`Ações para o upgrade de ${product.title}`}
+                    trigger={<MoreHorizontal className="size-4" />}
+                    items={product.candidates.map((candidate) => ({
+                      label: `Gerar upsell: ${candidate.title}`,
+                      description: `+${formatPercentage(candidate.priceUpliftPct)} · score ${candidate.score}`,
+                      icon: <ArrowUpRight className="size-4" />,
+                      onSelect: () => onCreateUpsell(product.productId, [candidate.productId]),
+                    }))}
+                  />
+                </TableCell>
+              </TableRow>
+            );
+          })}
         </TableBody>
       </Table>
     </div>
@@ -1588,6 +1688,30 @@ export default function DiscoverCombinationsPage() {
   // being stuck disabled until the response comes back.
   const bundleAbortRef = useRef<AbortController | null>(null);
 
+  // Cross-sell preview opened by "Gerar cross-sell" no canvas de produtos
+  // ponte. create_cross_sell não tem UI própria (mesma razão do bundle).
+  // Guarda o request original junto do resultado, assim "confirmar" chama de
+  // novo com dryRun: false sem precisar reconstruir os ids a partir do result.
+  const [crossSellPreview, setCrossSellPreview] = useState<{
+    productId: string;
+    relatedProductIds: string[];
+    result: CreateCrossSellOutput;
+  } | null>(null);
+  const [crossSellModalOpen, setCrossSellModalOpen] = useState(false);
+  const [crossSellBusy, setCrossSellBusy] = useState(false);
+  const [crossSellError, setCrossSellError] = useState<string | null>(null);
+
+  // Upsell preview, aberto pela tabela de Upsell. Mesmo padrão do cross-sell:
+  // create_upsell não tem UI própria, então o resultado vem pra cá.
+  const [upsellPreview, setUpsellPreview] = useState<{
+    productId: string;
+    relatedProductIds: string[];
+    result: CreateUpsellOutput;
+  } | null>(null);
+  const [upsellModalOpen, setUpsellModalOpen] = useState(false);
+  const [upsellBusy, setUpsellBusy] = useState(false);
+  const [upsellError, setUpsellError] = useState<string | null>(null);
+
   const [sortBy, setSortBy] = useState<SortKey>("score");
   const [glossaryOpen, setGlossaryOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("combinations");
@@ -1702,6 +1826,93 @@ export default function DiscoverCombinationsPage() {
     setBundleModalOpen(true);
     setBundleDiscountPct(0);
     runCreateBundle(title, components, true, 0);
+  }
+
+  /**
+   * Calls create_cross_sell directly on the server, same reason as
+   * runCreateBundle above. No UI of its own — the result comes straight here.
+   */
+  async function runCreateCrossSell(productId: string, relatedProductIds: string[], dryRun: boolean) {
+    if (!app || crossSellBusy) return;
+
+    setCrossSellBusy(true);
+    setCrossSellError(null);
+
+    try {
+      const response = await app.callServerTool({
+        name: "create_cross_sell",
+        arguments: { productId, relatedProductIds, dryRun },
+      });
+
+      if (response.isError) throw new Error(extractToolErrorText(response));
+
+      const structured = response.structuredContent as CreateCrossSellOutput | undefined;
+      if (!structured) {
+        throw new Error("A tool respondeu sem conteúdo estruturado.");
+      }
+
+      setCrossSellPreview({ productId, relatedProductIds, result: structured });
+    } catch (error) {
+      setCrossSellError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setCrossSellBusy(false);
+    }
+  }
+
+  function startCrossSellPreview(productId: string, relatedProductIds: string[]) {
+    setCrossSellPreview(null);
+    setCrossSellError(null);
+    setCrossSellModalOpen(true);
+    runCreateCrossSell(productId, relatedProductIds, true);
+  }
+
+  function cancelCrossSellModal() {
+    setCrossSellModalOpen(false);
+    setCrossSellPreview(null);
+    setCrossSellError(null);
+    setCrossSellBusy(false);
+  }
+
+  /** Chama create_upsell direto no servidor — mesma razão de runCreateBundle. */
+  async function runCreateUpsell(productId: string, relatedProductIds: string[], dryRun: boolean) {
+    if (!app || upsellBusy) return;
+
+    setUpsellBusy(true);
+    setUpsellError(null);
+
+    try {
+      const response = await app.callServerTool({
+        name: "create_upsell",
+        arguments: { productId, relatedProductIds, dryRun },
+      });
+
+      if (response.isError) throw new Error(extractToolErrorText(response));
+
+      const structured = response.structuredContent as CreateUpsellOutput | undefined;
+      if (!structured) {
+        throw new Error("A tool respondeu sem conteúdo estruturado.");
+      }
+
+      setUpsellPreview({ productId, relatedProductIds, result: structured });
+    } catch (error) {
+      setUpsellError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setUpsellBusy(false);
+    }
+  }
+
+  function startUpsellPreview(productId: string, relatedProductIds: string[]) {
+    setUpsellPreview(null);
+    setUpsellError(null);
+    setUpsellModalOpen(true);
+    runCreateUpsell(productId, relatedProductIds, true);
+  }
+
+  function cancelUpsellModal() {
+    setUpsellModalOpen(false);
+    setUpsellPreview(null);
+    setUpsellError(null);
+    setUpsellBusy(false);
   }
 
   function changeBundleDiscount(value: number) {
@@ -1879,7 +2090,7 @@ export default function DiscoverCombinationsPage() {
   const tabOptions: TabOption[] = [
     { key: "combinations", label: "Combinações" },
     { key: "bundles", label: "Bundles", badge: bundles.draft.length },
-    { key: "rules", label: "Regras & sequências" },
+    { key: "rules", label: "Cross-sell & Upsell" },
     { key: "sales", label: "Vendas" },
   ];
 
@@ -1994,14 +2205,22 @@ export default function DiscoverCombinationsPage() {
                 periodDays={period.days}
                 formatters={formatters}
                 onCreateBundle={startBundlePreview}
-                isFullscreen={isFullscreen}
-                onToggleFullscreen={toggleDisplayMode}
+                onCreateCrossSell={startCrossSellPreview}
               />
             </Section>
 
             <Section
               title="Upsell"
-              description="O que o cliente costuma comprar depois, em um pedido seguinte. É gatilho de recompra, não um kit de cross-sell."
+              description="A versão superior de cada produto: mesmo tipo de item, mais caro. É uma regra sobre o catálogo, não um padrão observado nos pedidos — diz que o upgrade existe e quanto custa a mais, não que os clientes já o fazem."
+            >
+              <Card>
+                <UpsellTable upsell={result.upsell} formatters={formatters} onCreateUpsell={startUpsellPreview} />
+              </Card>
+            </Section>
+
+            <Section
+              title="Sequência de compra"
+              description="O que o cliente volta para comprar em um pedido seguinte, e quanto tempo costuma levar. É gatilho de recompra — nem cross-sell, nem upgrade."
             >
               <Card>
                 <SequencesTable sequences={result.sequences} formatters={formatters} />
@@ -2071,6 +2290,56 @@ export default function DiscoverCombinationsPage() {
                   onChangeDiscount={changeBundleDiscount}
                   onRemoveComponent={removeBundleComponent}
                   onAskSuggestion={() => askHost(buildBundleSuggestionPrompt(bundlePreview.result))}
+                />
+              ) : null}
+            </>
+          )}
+        </div>
+      </Modal>
+
+      <Modal open={crossSellModalOpen} onClose={cancelCrossSellModal} title="Gerar cross-sell">
+        <div className="flex flex-col gap-4">
+          {crossSellBusy && !crossSellPreview && !crossSellError ? (
+            <Spinner label="Calculando o cross-sell..." />
+          ) : (
+            <>
+              {crossSellError ? (
+                <Alert icon={<AlertTriangle className="size-4" />} tone="danger">
+                  {crossSellError}
+                </Alert>
+              ) : null}
+              {crossSellPreview ? (
+                <CrossSellPreview
+                  result={crossSellPreview.result}
+                  busy={crossSellBusy}
+                  onPublish={() =>
+                    runCreateCrossSell(crossSellPreview.productId, crossSellPreview.relatedProductIds, false)
+                  }
+                  onDismiss={cancelCrossSellModal}
+                />
+              ) : null}
+            </>
+          )}
+        </div>
+      </Modal>
+
+      <Modal open={upsellModalOpen} onClose={cancelUpsellModal} title="Gerar upsell">
+        <div className="flex flex-col gap-4">
+          {upsellBusy && !upsellPreview && !upsellError ? (
+            <Spinner label="Calculando o upsell..." />
+          ) : (
+            <>
+              {upsellError ? (
+                <Alert icon={<AlertTriangle className="size-4" />} tone="danger">
+                  {upsellError}
+                </Alert>
+              ) : null}
+              {upsellPreview ? (
+                <UpsellPreview
+                  result={upsellPreview.result}
+                  busy={upsellBusy}
+                  onPublish={() => runCreateUpsell(upsellPreview.productId, upsellPreview.relatedProductIds, false)}
+                  onDismiss={cancelUpsellModal}
                 />
               ) : null}
             </>

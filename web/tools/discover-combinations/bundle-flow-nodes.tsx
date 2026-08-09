@@ -158,6 +158,8 @@ export interface RelatedNodeData {
 	onExplore: (productId: string) => void;
 	onOpenDetails: (edge: CrossSellEdge) => void;
 	onCreateBundle: (edge: CrossSellEdge) => void;
+	/** Grava este produto como complementar (cross-sell) do produto central, direto na Shopify. */
+	onCreateCrossSell: (edge: CrossSellEdge) => void;
 	selected: boolean;
 	onToggleSelect: (productId: string) => void;
 	[key: string]: unknown;
@@ -215,7 +217,7 @@ function CrossSellConfidenceLegend({
 }
 
 export function RelatedProductNode({ data }: { data: RelatedNodeData }) {
-	const { edge, centralTitle, onExplore, onOpenDetails, onCreateBundle, selected, onToggleSelect } = data;
+	const { edge, centralTitle, onExplore, onOpenDetails, onCreateBundle, onCreateCrossSell, selected, onToggleSelect } = data;
 
 	return (
 		<FlowCard className={selected ? "border-2 border-primary" : "border border-border"}>
@@ -262,6 +264,10 @@ export function RelatedProductNode({ data }: { data: RelatedNodeData }) {
 						<DropdownMenuItem onSelect={() => onCreateBundle(edge)}>
 							<Package className="size-4" />
 							Montar bundle
+						</DropdownMenuItem>
+						<DropdownMenuItem onSelect={() => onCreateCrossSell(edge)}>
+							<ArrowRightLeft className="size-4" />
+							Gerar cross-sell
 						</DropdownMenuItem>
 					</DropdownMenuContent>
 				</DropdownMenu>
@@ -360,7 +366,9 @@ export function NoCrossSellNode({ data }: { data: IsolatedNodeData }) {
 
 export const BUNDLE_FLOW_NODE_TYPES = {
 	central: CentralProductNode,
-	group: GroupNode,
+	// Não "group": é reservado pelo @xyflow/react (nodes container/parent) e
+	// carrega estilo padrão próprio, que aparecia atrás do nosso pill.
+	"cross-sell-group": GroupNode,
 	related: RelatedProductNode,
 	more: MoreNode,
 	isolated: IsolatedNode,

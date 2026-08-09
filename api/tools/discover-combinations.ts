@@ -192,6 +192,28 @@ const strongestRelationshipSchema = z.object({
   confidence: z.number().nullable(),
 });
 
+const upsellCandidateSchema = z.object({
+  productId: z.string(),
+  title: z.string(),
+  category: z.string(),
+  avgPrice: z.number(),
+  orders: z.number(),
+  priceUplift: z.number().describe("Quanto o upgrade custa a mais, na moeda da loja"),
+  priceUpliftPct: z.number().describe("O mesmo acréscimo em %"),
+  titleSimilarity: z.number().describe("0 a 1 — quanto os títulos indicam ser o mesmo tipo de produto"),
+  sameCategory: z.boolean(),
+  score: z.number().describe("0 a 100: mesmo tipo de produto, acréscimo plausível e demanda real"),
+});
+
+const productUpsellSchema = z.object({
+  productId: z.string(),
+  title: z.string(),
+  category: z.string(),
+  avgPrice: z.number(),
+  orders: z.number(),
+  candidates: z.array(upsellCandidateSchema).describe("Upgrades sugeridos, do maior score para o menor"),
+});
+
 const productCentralitySchema = z.object({
   productId: z.string(),
   title: z.string(),
@@ -293,6 +315,11 @@ export const discoverCombinationsOutputSchema = z.object({
     .array(productCentralitySchema)
     .describe(
       "Bundle Centrality: todo produto visto na janela, com score de quão 'produto ponte' ele é, suas relações de cross-sell e próxima compra, e se está isolado. Ordenado por centralityScore desc.",
+    ),
+  upsell: z
+    .array(productUpsellSchema)
+    .describe(
+      "Upsell: para cada produto, qual é a versão superior dele no catálogo (mesmo tipo de produto, mais caro). É uma REGRA DE CATÁLOGO, não Market Basket Analysis — não afirma que clientes fazem esse upgrade, só que a versão melhor existe e custa X% mais. Ordenado pelos produtos mais vendidos.",
     ),
   sales: z.object({
     currency: z.string(),
@@ -426,6 +453,7 @@ export const discoverCombinationsTool = (env: Env) =>
         rules: result.rules,
         sequences: result.sequences,
         bundleCentrality: result.bundleCentrality,
+        upsell: result.upsell,
         sales: {
           currency: sales.currency,
           summary: sales.summary,

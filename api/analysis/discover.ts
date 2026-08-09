@@ -14,6 +14,7 @@ import { generateRules } from "./rules.ts";
 import { analyzeSequences } from "./sequence.ts";
 import { buildTransactions } from "./transactions.ts";
 import type { ItemIndex, MinedItemset, ProductStat } from "./types.ts";
+import { computeUpsell, type ProductUpsell } from "./upsell.ts";
 
 export type Algorithm = "apriori" | "fpgrowth" | "auto";
 
@@ -115,6 +116,11 @@ export interface DiscoverResult {
   customersAnalyzed: number;
   /** Bundle Centrality de todo produto visto na janela, inclusive isolados. Ordenado por score desc. */
   bundleCentrality: ProductCentrality[];
+  /**
+   * Sugestões de upgrade (versão superior do mesmo produto). Regra de
+   * catálogo, não Market Basket — ver `upsell.ts`.
+   */
+  upsell: ProductUpsell[];
   warnings: string[];
 }
 
@@ -215,6 +221,10 @@ export function discoverCombinations(orders: readonly ShopifyOrder[], options: D
     minOrdersThreshold: options.minOrders,
   });
 
+  const upsell = computeUpsell(stats, {
+    maxCandidatesPerProduct: UPSELL_CANDIDATES_PER_PRODUCT,
+  });
+
   collectWarnings(warnings, {
     options,
     ordersAnalyzed,
@@ -239,9 +249,13 @@ export function discoverCombinations(orders: readonly ShopifyOrder[], options: D
     sequences,
     customersAnalyzed,
     bundleCentrality,
+    upsell,
     warnings,
   };
 }
+
+/** Upgrades por produto. Poucos e bons: a tabela mostra o melhor, o resto é alternativa. */
+const UPSELL_CANDIDATES_PER_PRODUCT = 3;
 
 /** Devolve TODAS as combinações de 2+ itens, ordenadas por score desc — sem corte de topo. Corte por `maxCombinations` é responsabilidade do chamador. */
 function buildCombinations(
@@ -354,6 +368,7 @@ function emptyResult(options: DiscoverOptions, warnings: string[], ordersWithCus
     sequences: [],
     customersAnalyzed: ordersWithCustomer,
     bundleCentrality: [],
+    upsell: [],
     warnings,
   };
 }

@@ -1,5 +1,5 @@
 import { type CombinationFormatters, formatLiftMultiplier, formatPercentage } from "@/web/utils/formatters.ts";
-import { ArrowRight, Package } from "lucide-react";
+import { ArrowRight, ArrowRightLeft, Package } from "lucide-react";
 import type { CrossSellEdge, ProductGraphNode } from "./bundle-flow-nodes.tsx";
 import { Modal } from "./floating.tsx";
 import { Row, SmallButton } from "./index.tsx";
@@ -14,6 +14,7 @@ export interface BundleRelationshipDrawerProps {
 	onClose: () => void;
 	onExplore: (productId: string) => void;
 	onCreateBundle: (edge: CrossSellEdge) => void;
+	onCreateCrossSell: (edge: CrossSellEdge) => void;
 	formatters: CombinationFormatters;
 }
 
@@ -26,7 +27,7 @@ function interpretationFor(central: ProductGraphNode, edge: CrossSellEdge): stri
 	return `Clientes que compraram ${central.title} apresentaram uma tendência ${formatLiftMultiplier(edge.lift)} maior de também comprar ${edge.title} no mesmo pedido do que seria esperado caso as compras fossem independentes. Isso descreve uma correlação observada na janela analisada, não uma relação de causa e efeito.`;
 }
 
-export function BundleRelationshipDrawer({ detail, onClose, onExplore, onCreateBundle, formatters }: BundleRelationshipDrawerProps) {
+export function BundleRelationshipDrawer({ detail, onClose, onExplore, onCreateBundle, onCreateCrossSell, formatters }: BundleRelationshipDrawerProps) {
 	if (!detail) return null;
 	const { central, edge } = detail;
 
@@ -64,7 +65,7 @@ export function BundleRelationshipDrawer({ detail, onClose, onExplore, onCreateB
 
 				<p className="text-muted-foreground text-xs leading-relaxed">{interpretationFor(central, edge)}</p>
 
-				<div className="flex justify-end gap-2">
+				<div className="flex flex-wrap justify-end gap-2">
 					<SmallButton variant="ghost" onClick={onClose}>
 						Fechar
 					</SmallButton>
@@ -75,6 +76,15 @@ export function BundleRelationshipDrawer({ detail, onClose, onExplore, onCreateB
 						}}
 					>
 						Explorar {edge.title}
+					</SmallButton>
+					<SmallButton
+						onClick={() => {
+							onClose();
+							onCreateCrossSell(edge);
+						}}
+					>
+						<ArrowRightLeft className="size-3.5" />
+						Gerar cross-sell
 					</SmallButton>
 					<SmallButton
 						active

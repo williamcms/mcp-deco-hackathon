@@ -11,7 +11,7 @@ import {
 	useReactFlow,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { Maximize2, Minimize2, Package, Scan, ZoomIn, ZoomOut } from "lucide-react";
+import { ArrowRightLeft, Maximize2, Minimize2, Package, Scan, ZoomIn, ZoomOut } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
 	BUNDLE_FLOW_NODE_TYPES,
@@ -42,6 +42,7 @@ interface LayoutOptions {
 	onExplore: (productId: string) => void;
 	onOpenDetails: (edge: CrossSellEdge) => void;
 	onCreateBundle: (edge: CrossSellEdge) => void;
+	onCreateCrossSell: (edge: CrossSellEdge) => void;
 	selectedCrossSellIds: ReadonlySet<string>;
 	onToggleSelect: (productId: string) => void;
 }
@@ -55,8 +56,20 @@ interface LayoutOptions {
  * além do `useMemo` do componente.
  */
 function layoutGraph(options: LayoutOptions): { nodes: Node[]; edges: Edge[] } {
-	const { node, isHub, periodDays, formatters, crossSellVisible, onShowMore, onExplore, onOpenDetails, onCreateBundle, selectedCrossSellIds, onToggleSelect } =
-		options;
+	const {
+		node,
+		isHub,
+		periodDays,
+		formatters,
+		crossSellVisible,
+		onShowMore,
+		onExplore,
+		onOpenDetails,
+		onCreateBundle,
+		onCreateCrossSell,
+		selectedCrossSellIds,
+		onToggleSelect,
+	} = options;
 
 	const hasCrossSell = node.crossSell.length > 0;
 
@@ -113,7 +126,10 @@ function layoutGraph(options: LayoutOptions): { nodes: Node[]; edges: Edge[] } {
 	const groupId = "group-cross-sell";
 	nodes.push({
 		id: groupId,
-		type: "group",
+		// Não usar "group" aqui: é um tipo reservado do @xyflow/react (nodes
+		// container/parent) que aplica seu próprio fundo padrão por baixo do
+		// nosso — aparecia como um quadrado cinza atrás do pill do Cross-sell.
+		type: "cross-sell-group",
 		position: { x: crossSellWidth / 2 - FLOW_GROUP_WIDTH / 2, y: LEVEL_Y.group },
 		data: { count: node.crossSellConnections },
 		draggable: false,
@@ -139,6 +155,7 @@ function layoutGraph(options: LayoutOptions): { nodes: Node[]; edges: Edge[] } {
 				onExplore,
 				onOpenDetails,
 				onCreateBundle,
+				onCreateCrossSell,
 				selected: selectedCrossSellIds.has(edge.productId),
 				onToggleSelect,
 			},
@@ -225,13 +242,34 @@ export interface BundleFlowCanvasProps {
 	onCreateBundle: (edge: CrossSellEdge) => void;
 	/** Monta um bundle com o produto central + todos os cross-sells selecionados. */
 	onCreateBundleSelection: (edges: CrossSellEdge[]) => void;
-	/** Estado de tela cheia do app inteiro (host MCP) — não existe "tela cheia" só do canvas na plataforma. */
+	onCreateCrossSell: (edge: CrossSellEdge) => void;
+	/** Grava o produto central + todos os cross-sells selecionados como complementares na Shopify. */
+	onCreateCrossSellSelection: (edges: CrossSellEdge[]) => void;
+	/**
+	 * Tela cheia só do canvas, local a esta tela — não é o display mode do
+	 * app inteiro (host MCP). `app.requestDisplayMode` existe pra isso, mas
+	 * sair do fullscreen por ele fechava o app inteiro neste host; um overlay
+	 * fixed dentro do próprio iframe é mais simples e mais confiável.
+	 */
 	isFullscreen: boolean;
 	onToggleFullscreen: () => void;
 }
 
 function BundleFlowCanvasInner(props: BundleFlowCanvasProps) {
-	const { node, isHub, periodDays, formatters, onExplore, onOpenDetails, onCreateBundle, onCreateBundleSelection, isFullscreen, onToggleFullscreen } = props;
+	const {
+		node,
+		isHub,
+		periodDays,
+		formatters,
+		onExplore,
+		onOpenDetails,
+		onCreateBundle,
+		onCreateBundleSelection,
+		onCreateCrossSell,
+		onCreateCrossSellSelection,
+		isFullscreen,
+		onToggleFullscreen,
+	} = props;
 	const { fitView } = useReactFlow();
 
 	const [crossSellVisible, setCrossSellVisible] = useState(INITIAL_VISIBLE);
@@ -272,16 +310,19 @@ function BundleFlowCanvasInner(props: BundleFlowCanvasProps) {
 				onExplore,
 				onOpenDetails,
 				onCreateBundle,
+				onCreateCrossSell,
 				selectedCrossSellIds,
 				onToggleSelect: toggleSelect,
 			}),
-		[node, isHub, periodDays, formatters, crossSellVisible, onExplore, onOpenDetails, onCreateBundle, selectedCrossSellIds, toggleSelect],
+		[node, isHub, periodDays, formatters, crossSellVisible, onExplore, onOpenDetails, onCreateBundle, onCreateCrossSell, selectedCrossSellIds, toggleSelect],
 	);
 
 	const selectedEdges = node.crossSell.filter((edge) => selectedCrossSellIds.has(edge.productId));
 
 	return (
-		<div className={`relative bg-card border border-border rounded-xl overflow-hidden ${isFullscreen ? "h-180" : "h-140"}`}>
+		<div
+			className={`relative bg-card border border-border rounded-xl overflow-hidden ${isFullscreen ? "flex-1 min-h-0" : "h-140"}`}
+		>
 			<ReactFlow
 				nodes={nodes}
 				edges={edges}
@@ -318,6 +359,10 @@ function BundleFlowCanvasInner(props: BundleFlowCanvasProps) {
 					<div className="flex items-center gap-1.5">
 						<SmallButton variant="ghost" onClick={() => setSelectedCrossSellIds(new Set())}>
 							Limpar
+						</SmallButton>
+						<SmallButton onClick={() => onCreateCrossSellSelection(selectedEdges)}>
+							<ArrowRightLeft className="size-3.5" />
+							Gerar cross-sell
 						</SmallButton>
 						<SmallButton active onClick={() => onCreateBundleSelection(selectedEdges)}>
 							<Package className="size-3.5" />

@@ -1,5 +1,5 @@
 import type { CombinationFormatters } from "@/web/utils/formatters.ts";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { BundleFlowCanvas } from "./bundle-flow-canvas.tsx";
 import { computeHubThreshold, type CrossSellEdge, type ProductGraphNode } from "./bundle-flow-nodes.tsx";
 import {
@@ -43,8 +43,8 @@ export interface BundleGraphSectionProps {
 		products: Array<{ id: string; title: string }>,
 		title: string,
 	) => void;
-	isFullscreen: boolean;
-	onToggleFullscreen: () => void;
+	/** Grava o produto central + os produtos dados como complementares (cross-sell) dele, direto na Shopify. */
+	onCreateCrossSell: (centralProductId: string, relatedProductIds: string[]) => void;
 }
 
 export function BundleGraphSection({
@@ -52,13 +52,26 @@ export function BundleGraphSection({
 	periodDays,
 	formatters,
 	onCreateBundle,
-	isFullscreen,
-	onToggleFullscreen,
+	onCreateCrossSell,
 }: BundleGraphSectionProps) {
 	const [selectedId, setSelectedId] = useState<string | null>(
 		bundleCentrality[0]?.productId ?? null,
 	);
 	const [detail, setDetail] = useState<RelationshipDetail | null>(null);
+	// Tela cheia só do canvas, local a esta tela (overlay fixed dentro do
+	// próprio app) — não depende do display mode do host MCP, que fechava o
+	// app inteiro ao tentar reduzir.
+	const [canvasFullscreen, setCanvasFullscreen] = useState(false);
+
+	// Esc sai da tela cheia, mesmo padrão do Modal (floating.tsx).
+	useEffect(() => {
+		if (!canvasFullscreen) return;
+		function onKeyDown(event: KeyboardEvent) {
+			if (event.key === "Escape") setCanvasFullscreen(false);
+		}
+		document.addEventListener("keydown", onKeyDown);
+		return () => document.removeEventListener("keydown", onKeyDown);
+	}, [canvasFullscreen]);
 
 	const selectedNode = useMemo(
 		() =>
@@ -94,40 +107,60 @@ export function BundleGraphSection({
 		setDetail({ central: selectedNode, edge });
 	}
 
+	/** Grava o produto central + os cross-sells dados como complementares na Shopify — ação rápida de um card ou seleção em lote. */
+	function handleCreateCrossSell(edges: CrossSellEdge[]) {
+		if (!selectedNode || edges.length === 0) return;
+		onCreateCrossSell(selectedNode.productId, edges.map((edge) => edge.productId));
+	}
+
+	const canvas = (
+		<BundleFlowCanvas
+			node={selectedNode}
+			isHub={isHubProduct(selectedNode, hubThreshold)}
+			periodDays={periodDays}
+			formatters={formatters}
+			onExplore={setSelectedId}
+			onOpenDetails={openDetails}
+			onCreateBundle={(edge) => handleCreateBundle([edge])}
+			onCreateBundleSelection={handleCreateBundle}
+			onCreateCrossSell={(edge) => handleCreateCrossSell([edge])}
+			onCreateCrossSellSelection={handleCreateCrossSell}
+			isFullscreen={canvasFullscreen}
+			onToggleFullscreen={() => setCanvasFullscreen((value) => !value)}
+		/>
+	);
+
 	return (
 		<div className="flex flex-col gap-3">
-			<div className="flex flex-col lg:flex-row gap-4">
-				<BundleSidebar
-					nodes={bundleCentrality}
-					selectedId={selectedNode.productId}
-					onSelect={setSelectedId}
-					formatters={formatters}
-					hubThreshold={hubThreshold}
-				/>
-				<div className="flex flex-col flex-1 gap-3 min-w-0">
-					<p className="text-muted-foreground text-sm leading-relaxed">
-						{buildInsight(selectedNode, hubThreshold)}
-					</p>
-					<BundleFlowCanvas
-						node={selectedNode}
-						isHub={isHubProduct(selectedNode, hubThreshold)}
-						periodDays={periodDays}
+			{canvasFullscreen ? (
+				// Overlay fixed, fora do fluxo da página — não mistura com o
+				// `lg:flex-row` do layout normal (especificidade do responsive
+				// venceria um `flex-col` condicional na mesma div).
+				<div className="fixed inset-0 z-5 flex flex-col bg-background p-4">{canvas}</div>
+			) : (
+				<div className="flex flex-col lg:flex-row gap-4">
+					<BundleSidebar
+						nodes={bundleCentrality}
+						selectedId={selectedNode.productId}
+						onSelect={setSelectedId}
 						formatters={formatters}
-						onExplore={setSelectedId}
-						onOpenDetails={openDetails}
-						onCreateBundle={(edge) => handleCreateBundle([edge])}
-						onCreateBundleSelection={handleCreateBundle}
-						isFullscreen={isFullscreen}
-						onToggleFullscreen={onToggleFullscreen}
+						hubThreshold={hubThreshold}
 					/>
+					<div className="flex flex-col flex-1 gap-3 min-w-0">
+						<p className="text-muted-foreground text-sm leading-relaxed">
+							{buildInsight(selectedNode, hubThreshold)}
+						</p>
+						{canvas}
+					</div>
 				</div>
-			</div>
+			)}
 
 			<BundleRelationshipDrawer
 				detail={detail}
 				onClose={() => setDetail(null)}
 				onExplore={setSelectedId}
 				onCreateBundle={(edge) => handleCreateBundle([edge])}
+				onCreateCrossSell={(edge) => handleCreateCrossSell([edge])}
 				formatters={formatters}
 			/>
 		</div>

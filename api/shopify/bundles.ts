@@ -600,7 +600,7 @@ export async function updateBundlePrice(
   return payload.productVariants ?? [];
 }
 
-function formatUserErrors(errors: Array<{ field: string[] | null; message: string }>): string {
+export function formatUserErrors(errors: Array<{ field: string[] | null; message: string }>): string {
   return errors
     .map((error) => (error.field?.length ? `${error.field.join(".")}: ${error.message}` : error.message))
     .join("; ");
