@@ -2,7 +2,7 @@ import {
 	type AssociationRule,
 	itemsetKey,
 	type MinedItemset,
-} from "./types.ts";
+} from "@/api/analysis/types.ts";
 
 export interface RuleOptions {
 	/** Total de transações — denominador de todos os suportes. */

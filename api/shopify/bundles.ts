@@ -1,4 +1,4 @@
-import { ShopifyApiError, type ShopifyCredentials, shopifyGraphQL, shopifyRest } from "./client.ts";
+import { ShopifyApiError, type ShopifyCredentials, shopifyGraphQL, shopifyRest } from "@/api/shopify/client.ts";
 
 // ---------------------------------------------------------------------------
 // Tipos
@@ -516,7 +516,7 @@ export async function updateBundleProduct(
   credentials: ShopifyCredentials,
   productId: string,
   fields: {
-    status?: "ACTIVE" | "DRAFT";
+    status?: "ACTIVE" | "DRAFT" | "ARCHIVED";
     tags?: string[];
     descriptionHtml?: string;
     seo?: { title?: string; description?: string };
@@ -546,6 +546,40 @@ export async function updateBundleProduct(
   }
 
   return payload.product;
+}
+
+const DELETE_PRODUCT_MUTATION = /* GraphQL */ `
+  mutation DeleteBundleProduct($input: ProductDeleteInput!) {
+    productDelete(input: $input) {
+      deletedProductId
+      userErrors {
+        field
+        message
+      }
+    }
+  }
+`;
+
+/** Permanent — unlike updateBundleProduct(status: "ARCHIVED"), there's no undo from the admin after this. */
+export async function deleteBundleProduct(credentials: ShopifyCredentials, productId: string): Promise<string> {
+  const data = await shopifyGraphQL<{
+    productDelete: {
+      deletedProductId: string | null;
+      userErrors: Array<{ field: string[] | null; message: string }>;
+    };
+  }>(credentials, DELETE_PRODUCT_MUTATION, { input: { id: productId } });
+
+  const payload = data.productDelete;
+
+  if (payload.userErrors.length > 0) {
+    throw new ShopifyApiError(`Não foi possível remover o bundle: ${formatUserErrors(payload.userErrors)}`, payload.userErrors);
+  }
+
+  if (!payload.deletedProductId) {
+    throw new ShopifyApiError("A Shopify não confirmou a remoção do bundle.");
+  }
+
+  return payload.deletedProductId;
 }
 
 const VARIANTS_PRICE_MUTATION = /* GraphQL */ `

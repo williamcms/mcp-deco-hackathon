@@ -10,11 +10,11 @@ import { Tabs, TabsContent } from "@/web/components/ui/tabs.tsx";
 import { useMcpApp, useMcpHostContext, useMcpState } from "@/web/context.tsx";
 import { cn } from "@/web/lib/utils.ts";
 import { BundleGraphSection } from "@/web/tools/discover-combinations/bundle-graph-section.tsx";
-import { CrossSellPreview } from "@/web/tools/discover-combinations/cross-sell-preview.tsx";
-import { UpsellPreview } from "@/web/tools/discover-combinations/upsell-preview.tsx";
+import { CrossSellPreview, ProductPillList } from "@/web/tools/discover-combinations/cross-sell-preview.tsx";
 import { buildExplainPrompt, combinationTitle } from "@/web/tools/discover-combinations/explain-prompt.ts";
 import { ActionMenu, HoverTip, Modal } from "@/web/tools/discover-combinations/floating.tsx";
 import { METRICS, type MetricKey } from "@/web/tools/discover-combinations/metrics-copy.ts";
+import { UpsellPreview } from "@/web/tools/discover-combinations/upsell-preview.tsx";
 import {
   COMBINATION_SCORE_COLORS,
   COMBINATION_SCORE_WEIGHTS,
@@ -35,7 +35,9 @@ import {
 import { extractToolErrorText } from "@/web/utils/mcp-tool-result.ts";
 import {
   AlertTriangle,
+  Archive,
   ArrowRight,
+  ArrowRightLeft,
   ArrowUpRight,
   ChevronRight,
   Coins,
@@ -47,6 +49,7 @@ import {
   Percent,
   Receipt,
   Sparkles,
+  Trash2,
   TrendingUp,
   Users,
   X,
@@ -509,6 +512,50 @@ export function Empty({ children }: { children: ReactNode }) {
   return <div className="px-4 py-8 text-muted-foreground text-sm text-center">{children}</div>;
 }
 
+export const PAGE_SIZE = 25;
+
+/** Client-side paging — every list here is already a full array in memory, no server round-trip per page. */
+export function usePagination<T>(items: T[]): {
+  page: number;
+  setPage: (page: number) => void;
+  totalPages: number;
+  pageItems: T[];
+} {
+  const [page, setPage] = useState(0);
+  const totalPages = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
+  const clampedPage = Math.min(page, totalPages - 1);
+  const pageItems = items.slice(clampedPage * PAGE_SIZE, (clampedPage + 1) * PAGE_SIZE);
+  return { page: clampedPage, setPage, totalPages, pageItems };
+}
+
+export function Pagination({
+  page,
+  totalPages,
+  onChange,
+}: {
+  page: number;
+  totalPages: number;
+  onChange: (page: number) => void;
+}) {
+  if (totalPages <= 1) return null;
+
+  return (
+    <div className="flex justify-between items-center px-4 py-2.5 border-t border-border">
+      <span className="text-muted-foreground text-xs">
+        Página {page + 1} de {totalPages}
+      </span>
+      <div className="flex items-center gap-1.5">
+        <SmallButton variant="ghost" disabled={page === 0} onClick={() => onChange(page - 1)}>
+          Anterior
+        </SmallButton>
+        <SmallButton variant="ghost" disabled={page >= totalPages - 1} onClick={() => onChange(page + 1)}>
+          Próxima
+        </SmallButton>
+      </div>
+    </div>
+  );
+}
+
 interface ExplainContext {
   periodDays: number;
   ordersAnalyzed: number;
@@ -821,6 +868,8 @@ function UpsellTable({
   formatters: CombinationFormatters;
   onCreateUpsell: (productId: string, relatedProductIds: string[]) => void;
 }) {
+  const { page, setPage, totalPages, pageItems } = usePagination(upsell);
+
   if (upsell.length === 0) {
     return (
       <Empty>
@@ -830,12 +879,12 @@ function UpsellTable({
   }
 
   return (
-    <div className="overflow-x-auto">
+    <div>
+      <div className="overflow-x-auto">
       <Table>
         <TableHeader>
           <TableRow className="hover:bg-transparent">
             <TableHead className="text-xs">Produto</TableHead>
-            <TableHead className="w-8" />
             <TableHead className="text-xs">Versão superior sugerida</TableHead>
             <TableHead className="text-xs text-right">
               <span className="inline-flex justify-end items-center gap-1 w-full">
@@ -853,7 +902,7 @@ function UpsellTable({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {upsell.map((product) => {
+          {pageItems.map((product) => {
             const best = product.candidates[0];
             if (!best) return null;
 
@@ -861,22 +910,21 @@ function UpsellTable({
               <TableRow key={product.productId}>
                 <TableCell>
                   <ProductChips products={[{ id: product.productId, title: product.title }]} />
-                  <span className="block mt-0.5 text-[11px] text-muted-foreground tabular-nums">
+                  <span className="block mt-0.5 tabular-nums text-[11px] text-muted-foreground">
                     {formatters.money.format(product.avgPrice)}
                   </span>
                 </TableCell>
-                <TableCell className="text-muted-foreground">
-                  <ArrowUpRight className="size-3.5" />
-                </TableCell>
                 <TableCell>
                   <ProductChips products={[{ id: best.productId, title: best.title }]} />
-                  <span className="block mt-0.5 text-[11px] text-muted-foreground tabular-nums">
+                  <span className="block mt-0.5 tabular-nums text-[11px] text-muted-foreground">
                     {formatters.money.format(best.avgPrice)}
                   </span>
                 </TableCell>
                 <TableCell className="tabular-nums text-right">
                   {formatters.money.format(best.priceUplift)}
-                  <span className="block text-[11px] text-muted-foreground">+{formatPercentage(best.priceUpliftPct)}</span>
+                  <span className="block text-[11px] text-muted-foreground">
+                    +{formatPercentage(best.priceUpliftPct)}
+                  </span>
                 </TableCell>
                 <TableCell className="font-medium tabular-nums text-right">{best.score}</TableCell>
                 <TableCell className="text-right">
@@ -896,6 +944,8 @@ function UpsellTable({
           })}
         </TableBody>
       </Table>
+      </div>
+      <Pagination page={page} totalPages={totalPages} onChange={setPage} />
     </div>
   );
 }
@@ -1133,28 +1183,33 @@ function BundlesTable({
   bundles,
   money,
   onRequestApprove,
+  onRequestAction,
 }: {
   bundles: BundleSummary[];
   money: Intl.NumberFormat;
   onRequestApprove: (bundle: BundleSummary) => void;
+  onRequestAction: (bundle: BundleSummary, kind: "archive" | "delete") => void;
 }) {
+  const { page, setPage, totalPages, pageItems } = usePagination(bundles);
+
   if (bundles.length === 0) {
     return <Empty>Nenhum bundle aqui no momento.</Empty>;
   }
 
   return (
-    <div className="overflow-x-auto">
+    <div>
+      <div className="overflow-x-auto">
       <Table>
         <TableHeader>
           <TableRow className="hover:bg-transparent">
             <TableHead className="text-xs">Bundle</TableHead>
             <TableHead className="text-xs text-right">Preço</TableHead>
             <TableHead className="text-xs text-right">Estoque</TableHead>
-            <TableHead className="w-24" />
+            <TableHead className="w-32" />
           </TableRow>
         </TableHeader>
         <TableBody>
-          {bundles.map((bundle) => (
+          {pageItems.map((bundle) => (
             <TableRow key={bundle.productId}>
               <TableCell>
                 <div className="flex items-center gap-3 min-w-0">
@@ -1175,7 +1230,7 @@ function BundlesTable({
                 {bundleHasDiscount(bundle) ? (
                   <span className="flex flex-col items-end">
                     <span className="tabular-nums">{bundlePriceRange(bundle, money)}</span>
-                    <span className="text-muted-foreground text-xs line-through tabular-nums">
+                    <span className="tabular-nums text-muted-foreground text-xs line-through">
                       {bundleCompareAtRange(bundle, money)}
                     </span>
                   </span>
@@ -1191,14 +1246,39 @@ function BundlesTable({
                 )}
               </TableCell>
               <TableCell className="text-right">
-                {bundle.status === "DRAFT" ? (
-                  <SmallButton onClick={() => onRequestApprove(bundle)}>Aprovar</SmallButton>
-                ) : null}
+                <div className="flex justify-end items-center gap-1">
+                  {bundle.status === "DRAFT" ? (
+                    <SmallButton onClick={() => onRequestApprove(bundle)}>Aprovar</SmallButton>
+                  ) : null}
+                  <ActionMenu
+                    label={`Ações para ${bundle.title}`}
+                    trigger={<MoreHorizontal className="size-4" />}
+                    items={[
+                      {
+                        label: bundle.status === "DRAFT" ? "Recusar" : "Arquivar",
+                        description:
+                          bundle.status === "DRAFT"
+                            ? "Arquiva o rascunho — reversível pelo admin da Shopify."
+                            : "Sai da lista de publicados — reversível pelo admin da Shopify.",
+                        icon: <Archive className="size-4" />,
+                        onSelect: () => onRequestAction(bundle, "archive"),
+                      },
+                      {
+                        label: "Remover",
+                        description: "Apaga o produto da Shopify de forma permanente.",
+                        icon: <Trash2 className="size-4" />,
+                        onSelect: () => onRequestAction(bundle, "delete"),
+                      },
+                    ]}
+                  />
+                </div>
               </TableCell>
             </TableRow>
           ))}
         </TableBody>
       </Table>
+      </div>
+      <Pagination page={page} totalPages={totalPages} onChange={setPage} />
     </div>
   );
 }
@@ -1207,10 +1287,20 @@ function BundlesSection({
   bundles,
   money,
   onRequestApprove,
+  onRequestAction,
+  crossSellKnown,
+  upsellKnown,
+  onRemoveCrossSell,
+  onRemoveUpsell,
 }: {
   bundles: BundlesData;
   money: Intl.NumberFormat;
   onRequestApprove: (bundle: BundleSummary) => void;
+  onRequestAction: (bundle: BundleSummary, kind: "archive" | "delete") => void;
+  crossSellKnown: CreateCrossSellOutput[];
+  upsellKnown: CreateUpsellOutput[];
+  onRemoveCrossSell: (productId: string, remainingIds: string[]) => void;
+  onRemoveUpsell: (productId: string, remainingIds: string[]) => void;
 }) {
   return (
     <div className="flex flex-col gap-10">
@@ -1224,7 +1314,12 @@ function BundlesSection({
         }
       >
         <Card>
-          <BundlesTable bundles={bundles.draft} money={money} onRequestApprove={onRequestApprove} />
+          <BundlesTable
+            bundles={bundles.draft}
+            money={money}
+            onRequestApprove={onRequestApprove}
+            onRequestAction={onRequestAction}
+          />
         </Card>
       </Section>
 
@@ -1238,7 +1333,71 @@ function BundlesSection({
         }
       >
         <Card>
-          <BundlesTable bundles={bundles.active} money={money} onRequestApprove={onRequestApprove} />
+          <BundlesTable
+            bundles={bundles.active}
+            money={money}
+            onRequestApprove={onRequestApprove}
+            onRequestAction={onRequestAction}
+          />
+        </Card>
+      </Section>
+
+      <Section
+        title="Cross-sell e upsell aplicados"
+        description='Relações gravadas na Shopify nesta sessão, via "Gerar cross-sell" no canvas ou "Gerar upsell" na tabela de Upsell. Clique no X de um produto para remover.'
+        right={
+          <Badge variant="secondary" className="tabular-nums">
+            {crossSellKnown.length + upsellKnown.length}
+          </Badge>
+        }
+      >
+        <Card>
+          {crossSellKnown.length === 0 && upsellKnown.length === 0 ? (
+            <Empty>Nenhum cross-sell ou upsell aplicado ainda nesta sessão.</Empty>
+          ) : (
+            <>
+              {crossSellKnown.map((entry, index) => (
+                <Row
+                  key={`cross-sell-${entry.product.id}`}
+                  first={index === 0}
+                  icon={<ArrowRightLeft className="size-4" />}
+                  title={entry.product.title}
+                  description="Cross-sell (produtos complementares)"
+                  right={
+                    <ProductPillList
+                      products={entry.finalComplementaryProducts}
+                      onRemove={(productId) =>
+                        onRemoveCrossSell(
+                          entry.product.id,
+                          entry.finalComplementaryProducts.map((p) => p.id).filter((id) => id !== productId),
+                        )
+                      }
+                    />
+                  }
+                />
+              ))}
+              {upsellKnown.map((entry, index) => (
+                <Row
+                  key={`upsell-${entry.product.id}`}
+                  first={crossSellKnown.length === 0 && index === 0}
+                  icon={<ArrowUpRight className="size-4" />}
+                  title={entry.product.title}
+                  description="Upsell (produtos relacionados)"
+                  right={
+                    <ProductPillList
+                      products={entry.finalRelatedProducts}
+                      onRemove={(productId) =>
+                        onRemoveUpsell(
+                          entry.product.id,
+                          entry.finalRelatedProducts.map((p) => p.id).filter((id) => id !== productId),
+                        )
+                      }
+                    />
+                  }
+                />
+              ))}
+            </>
+          )}
         </Card>
       </Section>
     </div>
@@ -1462,7 +1621,7 @@ function BundlePreview({
           icon={<Package className="size-4" />}
           title={isCreated ? "Bundle criado" : "Simulação — revise os produtos e o preço antes de criar"}
         />
-        <div className="flex flex-col gap-2 px-4 py-3 border-t border-border">
+        <div className="flex flex-col gap-2 px-4 py-3 border-border border-t">
           {result.components.map((component) => (
             <div key={component.productId} className="flex flex-col gap-1.5">
               <div className="flex justify-between items-center gap-3">
@@ -1623,7 +1782,7 @@ function BundlePreview({
               setSuggestionAsked(true);
               onAskSuggestion();
             }}
-            className="inline-flex justify-center items-center gap-1.5 disabled:opacity-50 bg-primary/10 hover:bg-primary/15 px-2.5 rounded-lg h-7 text-primary text-sm whitespace-nowrap transition-colors disabled:pointer-events-none"
+            className="inline-flex justify-center items-center gap-1.5 bg-primary/10 hover:bg-primary/15 disabled:opacity-50 px-2.5 rounded-lg h-7 text-primary text-sm whitespace-nowrap transition-colors disabled:pointer-events-none"
           >
             <Sparkles className="size-3.5" />
             Sugestão
@@ -1695,25 +1854,35 @@ export default function DiscoverCombinationsPage() {
   const [crossSellPreview, setCrossSellPreview] = useState<{
     productId: string;
     relatedProductIds: string[];
+    mode: "merge" | "replace";
     result: CreateCrossSellOutput;
   } | null>(null);
   const [crossSellModalOpen, setCrossSellModalOpen] = useState(false);
   const [crossSellBusy, setCrossSellBusy] = useState(false);
   const [crossSellError, setCrossSellError] = useState<string | null>(null);
+  // Last-applied cross-sell result per central product — the only way to show
+  // "cross-sell already approved" on the Aprovações screen without a bulk
+  // Shopify query: opportunistically captured whenever create_cross_sell
+  // actually writes the metafield (result.mode === "applied").
+  const [crossSellKnown, setCrossSellKnown] = useState<Map<string, CreateCrossSellOutput>>(new Map());
 
   // Upsell preview, aberto pela tabela de Upsell. Mesmo padrão do cross-sell:
   // create_upsell não tem UI própria, então o resultado vem pra cá.
   const [upsellPreview, setUpsellPreview] = useState<{
     productId: string;
     relatedProductIds: string[];
+    mode: "merge" | "replace";
     result: CreateUpsellOutput;
   } | null>(null);
   const [upsellModalOpen, setUpsellModalOpen] = useState(false);
   const [upsellBusy, setUpsellBusy] = useState(false);
   const [upsellError, setUpsellError] = useState<string | null>(null);
+  /** Same idea as crossSellKnown, for upsell. */
+  const [upsellKnown, setUpsellKnown] = useState<Map<string, CreateUpsellOutput>>(new Map());
 
   const [sortBy, setSortBy] = useState<SortKey>("score");
   const [glossaryOpen, setGlossaryOpen] = useState(false);
+  const [avisosOpen, setAvisosOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("combinations");
 
   // Bundle approval: confirmed drafts are tracked locally instead of
@@ -1724,6 +1893,15 @@ export default function DiscoverCombinationsPage() {
   const [approvedIds, setApprovedIds] = useState<Set<string>>(new Set());
   // productId currently showing the approval GIF instead of its real thumbnail.
   const [gifBundleId, setGifBundleId] = useState<string | null>(null);
+
+  // Archive/delete: one shared confirmation flow for both, same "removed locally" pattern as approval above.
+  const [bundleAction, setBundleAction] = useState<{ bundle: BundleSummary; kind: "archive" | "delete" } | null>(
+    null,
+  );
+  const [bundleActionBusy, setBundleActionBusy] = useState(false);
+  const [bundleActionError, setBundleActionError] = useState<string | null>(null);
+  const [archivedIds, setArchivedIds] = useState<Set<string>>(new Set());
+  const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
 
   /**
    * Calls the tool directly on the server that serves this app.
@@ -1832,7 +2010,12 @@ export default function DiscoverCombinationsPage() {
    * Calls create_cross_sell directly on the server, same reason as
    * runCreateBundle above. No UI of its own — the result comes straight here.
    */
-  async function runCreateCrossSell(productId: string, relatedProductIds: string[], dryRun: boolean) {
+  async function runCreateCrossSell(
+    productId: string,
+    relatedProductIds: string[],
+    dryRun: boolean,
+    mode: "merge" | "replace" = "merge",
+  ) {
     if (!app || crossSellBusy) return;
 
     setCrossSellBusy(true);
@@ -1841,7 +2024,7 @@ export default function DiscoverCombinationsPage() {
     try {
       const response = await app.callServerTool({
         name: "create_cross_sell",
-        arguments: { productId, relatedProductIds, dryRun },
+        arguments: { productId, relatedProductIds, dryRun, mode },
       });
 
       if (response.isError) throw new Error(extractToolErrorText(response));
@@ -1851,7 +2034,10 @@ export default function DiscoverCombinationsPage() {
         throw new Error("A tool respondeu sem conteúdo estruturado.");
       }
 
-      setCrossSellPreview({ productId, relatedProductIds, result: structured });
+      setCrossSellPreview({ productId, relatedProductIds, mode, result: structured });
+      if (structured.mode === "applied") {
+        setCrossSellKnown((prev) => new Map(prev).set(productId, structured));
+      }
     } catch (error) {
       setCrossSellError(error instanceof Error ? error.message : String(error));
     } finally {
@@ -1866,6 +2052,17 @@ export default function DiscoverCombinationsPage() {
     runCreateCrossSell(productId, relatedProductIds, true);
   }
 
+  /**
+   * "Remover" on an already-configured product: re-simulates with it left
+   * out and mode "replace" — reuses the same preview + publish button as any
+   * other cross-sell change, no separate confirmation flow needed.
+   */
+  function removeCrossSellProduct(productId: string, remainingIds: string[]) {
+    if (remainingIds.length === 0) return;
+    setCrossSellModalOpen(true);
+    runCreateCrossSell(productId, remainingIds, true, "replace");
+  }
+
   function cancelCrossSellModal() {
     setCrossSellModalOpen(false);
     setCrossSellPreview(null);
@@ -1874,7 +2071,12 @@ export default function DiscoverCombinationsPage() {
   }
 
   /** Chama create_upsell direto no servidor — mesma razão de runCreateBundle. */
-  async function runCreateUpsell(productId: string, relatedProductIds: string[], dryRun: boolean) {
+  async function runCreateUpsell(
+    productId: string,
+    relatedProductIds: string[],
+    dryRun: boolean,
+    mode: "merge" | "replace" = "merge",
+  ) {
     if (!app || upsellBusy) return;
 
     setUpsellBusy(true);
@@ -1883,7 +2085,7 @@ export default function DiscoverCombinationsPage() {
     try {
       const response = await app.callServerTool({
         name: "create_upsell",
-        arguments: { productId, relatedProductIds, dryRun },
+        arguments: { productId, relatedProductIds, dryRun, mode },
       });
 
       if (response.isError) throw new Error(extractToolErrorText(response));
@@ -1893,12 +2095,22 @@ export default function DiscoverCombinationsPage() {
         throw new Error("A tool respondeu sem conteúdo estruturado.");
       }
 
-      setUpsellPreview({ productId, relatedProductIds, result: structured });
+      setUpsellPreview({ productId, relatedProductIds, mode, result: structured });
+      if (structured.mode === "applied") {
+        setUpsellKnown((prev) => new Map(prev).set(productId, structured));
+      }
     } catch (error) {
       setUpsellError(error instanceof Error ? error.message : String(error));
     } finally {
       setUpsellBusy(false);
     }
+  }
+
+  /** Same idea as removeCrossSellProduct: re-simulate without it, mode "replace". */
+  function removeUpsellProduct(productId: string, remainingIds: string[]) {
+    if (remainingIds.length === 0) return;
+    setUpsellModalOpen(true);
+    runCreateUpsell(productId, remainingIds, true, "replace");
   }
 
   function startUpsellPreview(productId: string, relatedProductIds: string[]) {
@@ -1994,6 +2206,32 @@ export default function DiscoverCombinationsPage() {
     }
   }
 
+  /** Archives or permanently deletes a bundle, only after the confirmation modal's own click. */
+  async function runBundleAction() {
+    if (!app || !bundleAction || bundleActionBusy) return;
+    const { bundle, kind } = bundleAction;
+
+    setBundleActionBusy(true);
+    setBundleActionError(null);
+
+    try {
+      const response = await app.callServerTool({
+        name: kind === "archive" ? "archive_bundle" : "delete_bundle",
+        arguments: { productId: bundle.productId },
+      });
+
+      if (response.isError) throw new Error(extractToolErrorText(response));
+
+      if (kind === "archive") setArchivedIds((previous) => new Set(previous).add(bundle.productId));
+      else setDeletedIds((previous) => new Set(previous).add(bundle.productId));
+      setBundleAction(null);
+    } catch (error) {
+      setBundleActionError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBundleActionBusy(false);
+    }
+  }
+
   function askHost(prompt: string) {
     app?.sendMessage({
       role: "user",
@@ -2067,20 +2305,20 @@ export default function DiscoverCombinationsPage() {
   const best = result.combinations[0];
   const attachRate = summary.ordersAnalyzed > 0 ? (summary.multiItemOrders / summary.ordersAnalyzed) * 100 : 0;
 
-  // Approved drafts move to "active" locally, without waiting for a full re-run.
-  const bundles: BundlesData =
-    approvedIds.size === 0
-      ? result.bundles
-      : {
-          ...result.bundles,
-          draft: result.bundles.draft.filter((bundle) => !approvedIds.has(bundle.productId)),
-          active: [
-            ...result.bundles.draft
-              .filter((bundle) => approvedIds.has(bundle.productId))
-              .map((bundle) => ({ ...bundle, status: "ACTIVE" as const })),
-            ...result.bundles.active,
-          ],
-        };
+  // Approved drafts move to "active", and archived/deleted ones drop out — all locally, without a full re-run.
+  const removedIds = new Set([...archivedIds, ...deletedIds]);
+  const bundles: BundlesData = {
+    ...result.bundles,
+    draft: result.bundles.draft
+      .filter((bundle) => !approvedIds.has(bundle.productId))
+      .filter((bundle) => !removedIds.has(bundle.productId)),
+    active: [
+      ...result.bundles.draft
+        .filter((bundle) => approvedIds.has(bundle.productId))
+        .map((bundle) => ({ ...bundle, status: "ACTIVE" as const })),
+      ...result.bundles.active,
+    ].filter((bundle) => !removedIds.has(bundle.productId)),
+  };
   const bundleMoney = new Intl.NumberFormat("pt-BR", {
     style: "currency",
     currency: bundles.currency || "BRL",
@@ -2089,7 +2327,7 @@ export default function DiscoverCombinationsPage() {
 
   const tabOptions: TabOption[] = [
     { key: "combinations", label: "Combinações" },
-    { key: "bundles", label: "Bundles", badge: bundles.draft.length },
+    { key: "bundles", label: "Aprovações", badge: bundles.draft.length },
     { key: "rules", label: "Cross-sell & Upsell" },
     { key: "sales", label: "Vendas" },
   ];
@@ -2110,7 +2348,7 @@ export default function DiscoverCombinationsPage() {
             </SmallButton>
           ))}
           <SmallButton variant="ghost" onClick={toggleDisplayMode}>
-            {isFullscreen ? "Reduzir" : "Expandir"}
+            {isFullscreen ? "Fechar" : "Expandir"}
           </SmallButton>
         </div>
       </div>
@@ -2182,16 +2420,26 @@ export default function DiscoverCombinationsPage() {
                     campaignDays: period.campaignDays,
                   }}
                   onAskHost={askHost}
-                  onCreateBundle={(combination) => startBundlePreview(combination.products, combinationTitle(combination))}
+                  onCreateBundle={(combination) =>
+                    startBundlePreview(combination.products, combinationTitle(combination))
+                  }
                 />
               </Card>
             </Section>
-
           </div>
         </TabsContent>
 
         <TabsContent value="bundles">
-          <BundlesSection bundles={bundles} money={bundleMoney} onRequestApprove={setConfirmingBundle} />
+          <BundlesSection
+            bundles={bundles}
+            money={bundleMoney}
+            onRequestApprove={setConfirmingBundle}
+            onRequestAction={(bundle, kind) => setBundleAction({ bundle, kind })}
+            crossSellKnown={Array.from(crossSellKnown.values())}
+            upsellKnown={Array.from(upsellKnown.values())}
+            onRemoveCrossSell={removeCrossSellProduct}
+            onRemoveUpsell={removeUpsellProduct}
+          />
         </TabsContent>
 
         <TabsContent value="rules">
@@ -2235,21 +2483,17 @@ export default function DiscoverCombinationsPage() {
       </Tabs>
 
       {result.warnings.length > 0 ? (
-        <Section
-          title={`Avisos (${result.warnings.length})`}
-          description="Limites da análise que afetam como estes números devem ser lidos."
+        <button
+          type="button"
+          onClick={() => setAvisosOpen(true)}
+          aria-label={`Avisos (${result.warnings.length})`}
+          className="group inline-flex right-6 bottom-20 z-3 fixed items-center bg-amber-600 dark:bg-amber-500 shadow-lg px-3 rounded-full h-10 text-white text-sm"
         >
-          <Card>
-            {result.warnings.map((warning, index) => (
-              <Row
-                key={warning}
-                first={index === 0}
-                icon={<AlertTriangle className="size-4 text-amber-600 dark:text-amber-400" />}
-                title={<span className="font-normal text-muted-foreground">{warning}</span>}
-              />
-            ))}
-          </Card>
-        </Section>
+          <AlertTriangle className="size-4 shrink-0" />
+          <span className="grid grid-cols-[0fr] group-hover:grid-cols-[1fr] ml-0 group-hover:ml-2 overflow-hidden transition-[grid-template-columns,margin-left] duration-200">
+            <span className="overflow-hidden whitespace-nowrap">Avisos ({result.warnings.length})</span>
+          </span>
+        </button>
       ) : null}
 
       <button
@@ -2263,6 +2507,19 @@ export default function DiscoverCombinationsPage() {
           <span className="overflow-hidden whitespace-nowrap">Como ler estes números</span>
         </span>
       </button>
+
+      <Modal open={avisosOpen} onClose={() => setAvisosOpen(false)} title={`Avisos (${result.warnings.length})`}>
+        <Card>
+          {result.warnings.map((warning, index) => (
+            <Row
+              key={warning}
+              first={index === 0}
+              icon={<AlertTriangle className="size-4 text-amber-600 dark:text-amber-400" />}
+              title={<span className="font-normal text-muted-foreground">{warning}</span>}
+            />
+          ))}
+        </Card>
+      </Modal>
 
       <Modal open={bundleModalOpen} onClose={cancelBundleModal} title="Montar bundle">
         <div className="flex flex-col gap-4">
@@ -2313,9 +2570,22 @@ export default function DiscoverCombinationsPage() {
                   result={crossSellPreview.result}
                   busy={crossSellBusy}
                   onPublish={() =>
-                    runCreateCrossSell(crossSellPreview.productId, crossSellPreview.relatedProductIds, false)
+                    runCreateCrossSell(
+                      crossSellPreview.productId,
+                      crossSellPreview.relatedProductIds,
+                      false,
+                      crossSellPreview.mode,
+                    )
                   }
                   onDismiss={cancelCrossSellModal}
+                  onRemoveExisting={(productId) =>
+                    removeCrossSellProduct(
+                      crossSellPreview.productId,
+                      crossSellPreview.result.existingComplementaryProducts
+                        .map((product) => product.id)
+                        .filter((id) => id !== productId),
+                    )
+                  }
                 />
               ) : null}
             </>
@@ -2338,8 +2608,16 @@ export default function DiscoverCombinationsPage() {
                 <UpsellPreview
                   result={upsellPreview.result}
                   busy={upsellBusy}
-                  onPublish={() => runCreateUpsell(upsellPreview.productId, upsellPreview.relatedProductIds, false)}
+                  onPublish={() =>
+                    runCreateUpsell(upsellPreview.productId, upsellPreview.relatedProductIds, false, upsellPreview.mode)
+                  }
                   onDismiss={cancelUpsellModal}
+                  onRemoveExisting={(productId) =>
+                    removeUpsellProduct(
+                      upsellPreview.productId,
+                      upsellPreview.result.existingRelatedProducts.map((product) => product.id).filter((id) => id !== productId),
+                    )
+                  }
                 />
               ) : null}
             </>
@@ -2393,8 +2671,8 @@ export default function DiscoverCombinationsPage() {
                 </div>
               )}
               <p className="text-sm">
-                <b>{confirmingBundle.title}</b> vai ser publicado na loja agora — o status muda de rascunho para
-                ativo, visível para os clientes.
+                <b>{confirmingBundle.title}</b> vai ser publicado na loja agora — o status muda de rascunho para ativo,
+                visível para os clientes.
               </p>
             </div>
             <div className="flex justify-between items-center bg-muted/40 px-3 py-2 rounded-lg text-sm">
@@ -2424,13 +2702,66 @@ export default function DiscoverCombinationsPage() {
               >
                 Cancelar
               </SmallButton>
-              <SmallButton
-                active
-                disabled={approvingId !== null}
-                onClick={() => approveBundle(confirmingBundle)}
-              >
+              <SmallButton active disabled={approvingId !== null} onClick={() => approveBundle(confirmingBundle)}>
                 {approvingId ? "Aprovando..." : "Aprovar e publicar"}
               </SmallButton>
+            </div>
+          </div>
+        ) : null}
+      </Modal>
+
+      <Modal
+        open={bundleAction != null}
+        onClose={() => {
+          if (bundleActionBusy) return;
+          setBundleAction(null);
+          setBundleActionError(null);
+        }}
+        title={bundleAction?.kind === "delete" ? "Remover bundle?" : "Arquivar bundle?"}
+      >
+        {bundleAction ? (
+          <div className="flex flex-col gap-4">
+            <p className="text-sm">
+              <b>{bundleAction.bundle.title}</b>{" "}
+              {bundleAction.kind === "delete"
+                ? "vai ser apagado da Shopify permanentemente. Não tem como desfazer pelo admin depois."
+                : "vai ser arquivado — some daqui, mas continua existindo no admin da Shopify, reversível a qualquer momento."}
+            </p>
+            {bundleAction.kind === "delete" ? (
+              <Alert icon={<AlertTriangle className="size-4" />} tone="danger">
+                Essa ação é permanente e não pode ser desfeita por aqui.
+              </Alert>
+            ) : null}
+            {bundleActionError ? (
+              <Alert icon={<AlertTriangle className="size-4" />} tone="danger">
+                {bundleActionError}
+              </Alert>
+            ) : null}
+            <div className="flex justify-end gap-2">
+              <SmallButton
+                variant="ghost"
+                disabled={bundleActionBusy}
+                onClick={() => {
+                  setBundleAction(null);
+                  setBundleActionError(null);
+                }}
+              >
+                Cancelar
+              </SmallButton>
+              {bundleAction.kind === "delete" ? (
+                <button
+                  type="button"
+                  disabled={bundleActionBusy}
+                  onClick={runBundleAction}
+                  className="inline-flex justify-center items-center gap-1.5 disabled:opacity-50 bg-destructive hover:bg-destructive/90 px-2.5 rounded-lg h-7 text-white text-sm whitespace-nowrap transition-colors disabled:pointer-events-none"
+                >
+                  {bundleActionBusy ? "Removendo..." : "Remover permanentemente"}
+                </button>
+              ) : (
+                <SmallButton active disabled={bundleActionBusy} onClick={runBundleAction}>
+                  {bundleActionBusy ? "Arquivando..." : "Arquivar"}
+                </SmallButton>
+              )}
             </div>
           </div>
         ) : null}

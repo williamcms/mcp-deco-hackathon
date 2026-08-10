@@ -7,7 +7,7 @@ import {
   type ComponentRequest,
   defaultBundleTitle,
   type PricingStrategy,
-} from "../analysis/bundle-plan.ts";
+} from "@/api/analysis/bundle-plan.ts";
 import {
   adminProductUrl,
   type ComponentProduct,
@@ -18,9 +18,9 @@ import {
   updateBundlePrice,
   updateBundleProduct,
   uploadProductImage,
-} from "../shopify/bundles.ts";
-import { resolveCredentials } from "../shopify/client.ts";
-import type { Env } from "../types/env.ts";
+} from "@/api/shopify/bundles.ts";
+import { resolveCredentials } from "@/api/shopify/client.ts";
+import type { Env } from "@/api/types/env.ts";
 
 // ---------------------------------------------------------------------------
 // Input

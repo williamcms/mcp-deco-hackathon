@@ -1,10 +1,10 @@
 import type { CreateCrossSellOutput } from "@/api/tools/create-cross-sell.ts";
-import { ArrowRightLeft, Package } from "lucide-react";
-import { Alert, Card, Empty, Row, SmallButton } from "./index.tsx";
+import { ArrowRightLeft, X } from "lucide-react";
+import { Alert, Card, Empty, Row, SmallButton } from "@/web/tools/discover-combinations/index.tsx";
 
-type ProductRef = CreateCrossSellOutput["finalComplementaryProducts"][number];
+export type ProductRef = CreateCrossSellOutput["finalComplementaryProducts"][number];
 
-function ProductPill({ product }: { product: ProductRef }) {
+function ProductPill({ product, onRemove }: { product: ProductRef; onRemove?: () => void }) {
 	return (
 		<span className="inline-flex items-center gap-1.5 bg-muted/60 px-2 py-1 rounded-md max-w-50 text-xs">
 			{product.imageUrl ? (
@@ -13,16 +13,32 @@ function ProductPill({ product }: { product: ProductRef }) {
 			<span className="truncate" title={product.title}>
 				{product.title}
 			</span>
+			{onRemove ? (
+				<button
+					type="button"
+					aria-label={`Remover ${product.title}`}
+					onClick={onRemove}
+					className="flex justify-center items-center hover:bg-accent rounded-sm size-3.5 text-muted-foreground shrink-0"
+				>
+					<X className="size-3" />
+				</button>
+			) : null}
 		</span>
 	);
 }
 
-function ProductPillList({ products }: { products: ProductRef[] }) {
+export function ProductPillList({
+	products,
+	onRemove,
+}: {
+	products: ProductRef[];
+	onRemove?: (productId: string) => void;
+}) {
 	if (products.length === 0) return <span className="text-muted-foreground text-xs">Nenhum</span>;
 	return (
 		<div className="flex flex-wrap justify-end gap-1.5 max-w-70">
 			{products.map((product) => (
-				<ProductPill key={product.id} product={product} />
+				<ProductPill key={product.id} product={product} onRemove={onRemove ? () => onRemove(product.id) : undefined} />
 			))}
 		</div>
 	);
@@ -33,6 +49,8 @@ export interface CrossSellPreviewProps {
 	busy: boolean;
 	onPublish: () => void;
 	onDismiss: () => void;
+	/** Re-simulates without this product — the caller re-runs create_cross_sell with mode "replace". */
+	onRemoveExisting: (productId: string) => void;
 }
 
 /**
@@ -41,7 +59,7 @@ export interface CrossSellPreviewProps {
  * que entra de novo e a lista final, para o merchant confirmar antes de
  * gravar o metafield na Shopify.
  */
-export function CrossSellPreview({ result, busy, onPublish, onDismiss }: CrossSellPreviewProps) {
+export function CrossSellPreview({ result, busy, onPublish, onDismiss, onRemoveExisting }: CrossSellPreviewProps) {
 	const isApplied = result.mode === "applied";
 
 	return (
@@ -55,8 +73,17 @@ export function CrossSellPreview({ result, busy, onPublish, onDismiss }: CrossSe
 				/>
 				<Row
 					title="Já recomendados hoje"
-					description="Configurados antes desta chamada — preservados, não substituídos"
-					right={<ProductPillList products={result.existingComplementaryProducts} />}
+					description={
+						isApplied
+							? "Configurados antes desta chamada — preservados, não substituídos"
+							: "Configurados antes desta chamada — clique no X para remover um"
+					}
+					right={
+						<ProductPillList
+							products={result.existingComplementaryProducts}
+							onRemove={isApplied || busy ? undefined : onRemoveExisting}
+						/>
+					}
 				/>
 				<Row
 					title={isApplied ? "Adicionados" : "Serão adicionados"}
@@ -70,23 +97,6 @@ export function CrossSellPreview({ result, busy, onPublish, onDismiss }: CrossSe
 					/>
 				) : null}
 				<Row title="Lista final" right={<ProductPillList products={result.finalComplementaryProducts} />} />
-				{isApplied ? (
-					<Row
-						icon={<Package className="size-4" />}
-						title="Revisar no admin"
-						description={result.product.adminUrl}
-						right={
-							<a
-								href={result.product.adminUrl}
-								target="_blank"
-								rel="noreferrer"
-								className="inline-flex items-center gap-1 text-xs underline underline-offset-2"
-							>
-								Abrir
-							</a>
-						}
-					/>
-				) : null}
 				{result.warnings.map((warning) => (
 					<Row key={warning} title={<span className="font-normal text-muted-foreground text-xs">{warning}</span>} />
 				))}

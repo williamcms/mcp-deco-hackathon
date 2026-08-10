@@ -1,5 +1,5 @@
-import { formatUserErrors } from "./bundles.ts";
-import { ShopifyApiError, type ShopifyCredentials, shopifyGraphQL } from "./client.ts";
+import { formatUserErrors } from "@/api/shopify/bundles.ts";
+import { ShopifyApiError, type ShopifyCredentials, shopifyGraphQL } from "@/api/shopify/client.ts";
 
 /**
  * Metafield reservado da própria Shopify (não é um campo custom desta app):

@@ -19,8 +19,8 @@ import {
 	FLOW_GROUP_WIDTH,
 	FLOW_NODE_WIDTH,
 	type ProductGraphNode,
-} from "./bundle-flow-nodes.tsx";
-import { SmallButton } from "./index.tsx";
+} from "@/web/tools/discover-combinations/bundle-flow-nodes.tsx";
+import { SmallButton } from "@/web/tools/discover-combinations/index.tsx";
 
 const GAP_X = 20;
 const LEVEL_Y = { central: 0, group: 140, leaf: 300 } as const;
@@ -41,8 +41,6 @@ interface LayoutOptions {
 	onShowMore: () => void;
 	onExplore: (productId: string) => void;
 	onOpenDetails: (edge: CrossSellEdge) => void;
-	onCreateBundle: (edge: CrossSellEdge) => void;
-	onCreateCrossSell: (edge: CrossSellEdge) => void;
 	selectedCrossSellIds: ReadonlySet<string>;
 	onToggleSelect: (productId: string) => void;
 }
@@ -65,8 +63,6 @@ function layoutGraph(options: LayoutOptions): { nodes: Node[]; edges: Edge[] } {
 		onShowMore,
 		onExplore,
 		onOpenDetails,
-		onCreateBundle,
-		onCreateCrossSell,
 		selectedCrossSellIds,
 		onToggleSelect,
 	} = options;
@@ -154,8 +150,6 @@ function layoutGraph(options: LayoutOptions): { nodes: Node[]; edges: Edge[] } {
 				centralTitle: node.title,
 				onExplore,
 				onOpenDetails,
-				onCreateBundle,
-				onCreateCrossSell,
 				selected: selectedCrossSellIds.has(edge.productId),
 				onToggleSelect,
 			},
@@ -239,10 +233,8 @@ export interface BundleFlowCanvasProps {
 	formatters: CombinationFormatters;
 	onExplore: (productId: string) => void;
 	onOpenDetails: (edge: CrossSellEdge) => void;
-	onCreateBundle: (edge: CrossSellEdge) => void;
 	/** Monta um bundle com o produto central + todos os cross-sells selecionados. */
 	onCreateBundleSelection: (edges: CrossSellEdge[]) => void;
-	onCreateCrossSell: (edge: CrossSellEdge) => void;
 	/** Grava o produto central + todos os cross-sells selecionados como complementares na Shopify. */
 	onCreateCrossSellSelection: (edges: CrossSellEdge[]) => void;
 	/**
@@ -263,9 +255,7 @@ function BundleFlowCanvasInner(props: BundleFlowCanvasProps) {
 		formatters,
 		onExplore,
 		onOpenDetails,
-		onCreateBundle,
 		onCreateBundleSelection,
-		onCreateCrossSell,
 		onCreateCrossSellSelection,
 		isFullscreen,
 		onToggleFullscreen,
@@ -309,12 +299,10 @@ function BundleFlowCanvasInner(props: BundleFlowCanvasProps) {
 				onShowMore: () => setCrossSellVisible(MAX_VISIBLE),
 				onExplore,
 				onOpenDetails,
-				onCreateBundle,
-				onCreateCrossSell,
 				selectedCrossSellIds,
 				onToggleSelect: toggleSelect,
 			}),
-		[node, isHub, periodDays, formatters, crossSellVisible, onExplore, onOpenDetails, onCreateBundle, onCreateCrossSell, selectedCrossSellIds, toggleSelect],
+		[node, isHub, periodDays, formatters, crossSellVisible, onExplore, onOpenDetails, selectedCrossSellIds, toggleSelect],
 	);
 
 	const selectedEdges = node.crossSell.filter((edge) => selectedCrossSellIds.has(edge.productId));

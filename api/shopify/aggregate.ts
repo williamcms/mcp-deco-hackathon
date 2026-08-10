@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { ShopifyLineItem, ShopifyOrder } from "./orders.ts";
+import type { ShopifyLineItem, ShopifyOrder } from "@/api/shopify/orders.ts";
 
 // ---------------------------------------------------------------------------
 // Output shape

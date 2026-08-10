@@ -19,7 +19,7 @@
  * não provam isso. A promessa é mais modesta e honesta: "existe uma versão
  * superior deste produto no catálogo, e ela custa X% mais".
  */
-import type { ProductStat } from "./types.ts";
+import type { ProductStat } from "@/api/analysis/types.ts";
 
 /**
  * Pesos do score de upsell (0-100 no total). Centralizados aqui para a UI

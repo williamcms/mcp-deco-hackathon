@@ -1,4 +1,4 @@
-import type { MinedItemset } from "./types.ts";
+import type { MinedItemset } from "@/api/analysis/types.ts";
 
 /**
  * FP-Growth (Han, Pei & Yin, 2000).

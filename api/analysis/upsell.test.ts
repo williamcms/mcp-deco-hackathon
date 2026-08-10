@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { ProductStat } from "./types.ts";
+import type { ProductStat } from "@/api/analysis/types.ts";
 import {
 	averagePrice,
 	computeUpsell,
@@ -10,7 +10,7 @@ import {
 	UPSELL_MIN_UPLIFT_PCT,
 	UPSELL_WEIGHTS,
 	upliftScore,
-} from "./upsell.ts";
+} from "@/api/analysis/upsell.ts";
 
 // ---------------------------------------------------------------------------
 // Fixtures

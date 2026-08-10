@@ -8,46 +8,45 @@ import type { Env } from "@/api/types/env.ts";
 // Input
 // ---------------------------------------------------------------------------
 
-export const approveBundleInputSchema = z.object({
+export const archiveBundleInputSchema = z.object({
   productId: z
     .string()
     .describe(
-      "Bundle a aprovar. Aceita o gid (gid://shopify/Product/123), o ID numérico ou a URL do produto no admin.",
+      "Bundle a arquivar ou recusar. Aceita o gid (gid://shopify/Product/123), o ID numérico ou a URL do produto no admin.",
     ),
 });
 
-export type ApproveBundleInput = z.input<typeof approveBundleInputSchema>;
+export type ArchiveBundleInput = z.input<typeof archiveBundleInputSchema>;
 
 // ---------------------------------------------------------------------------
 // Output
 // ---------------------------------------------------------------------------
 
-export const approveBundleOutputSchema = z.object({
+export const archiveBundleOutputSchema = z.object({
   productId: z.string(),
   title: z.string(),
   status: z.string(),
-  onlineStoreUrl: z.string().nullable(),
 });
 
-export type ApproveBundleOutput = z.infer<typeof approveBundleOutputSchema>;
+export type ArchiveBundleOutput = z.infer<typeof archiveBundleOutputSchema>;
 
 // ---------------------------------------------------------------------------
 // Tool
 // ---------------------------------------------------------------------------
 
 /**
- * Ação interna, sem UI própria: muda o status de um bundle de DRAFT para
- * ACTIVE, publicando-o na loja. Acionada pelo botão "Aprovar" na aba Bundles
- * de discover_combinations, depois de uma confirmação explícita — não chame
- * direto pelo chat sem essa confirmação do usuário.
+ * Ação interna, sem UI própria: arquiva um bundle (status -> ARCHIVED) —
+ * reversível pelo admin da Shopify, ao contrário de delete_bundle. Usada
+ * tanto para "Recusar" um rascunho quanto para "Arquivar" um já publicado,
+ * na aba Bundles de discover_combinations, depois de confirmação explícita.
  */
-export const approveBundleTool = (env: Env) =>
+export const archiveBundleTool = (env: Env) =>
   createTool({
-    id: "approve_bundle",
+    id: "archive_bundle",
     description:
-      "Aprova um bundle em rascunho, publicando-o na loja (status DRAFT -> ACTIVE). Acionada pela aba Bundles de discover_combinations, depois de confirmação do usuário. Precisa do escopo write_products.",
-    inputSchema: approveBundleInputSchema,
-    outputSchema: approveBundleOutputSchema,
+      "Arquiva um bundle (status -> ARCHIVED), reversível pelo admin da Shopify. Usada para recusar um rascunho ou arquivar um já publicado. Acionada pela aba Bundles de discover_combinations, depois de confirmação do usuário. Precisa do escopo write_products.",
+    inputSchema: archiveBundleInputSchema,
+    outputSchema: archiveBundleOutputSchema,
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -58,13 +57,12 @@ export const approveBundleTool = (env: Env) =>
       const credentials = resolveCredentials(env);
       const productId = toProductGid(context.productId);
 
-      const product = await updateBundleProduct(credentials, productId, { status: "ACTIVE" });
+      const product = await updateBundleProduct(credentials, productId, { status: "ARCHIVED" });
 
       return {
         productId: product.id,
         title: product.title,
         status: product.status,
-        onlineStoreUrl: product.onlineStoreUrl,
       };
     },
   });

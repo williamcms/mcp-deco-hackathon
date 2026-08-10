@@ -1,7 +1,7 @@
-import type { ShopifyOrder } from "../shopify/orders.ts";
-import { apriori } from "./apriori.ts";
-import { computeBundleCentrality, type ProductCentrality } from "./centrality.ts";
-import { fpGrowth } from "./fpgrowth.ts";
+import type { ShopifyOrder } from "@/api/shopify/orders.ts";
+import { apriori } from "@/api/analysis/apriori.ts";
+import { computeBundleCentrality, type ProductCentrality } from "@/api/analysis/centrality.ts";
+import { fpGrowth } from "@/api/analysis/fpgrowth.ts";
 import {
   type CombinationEconomics,
   computeEconomics,
@@ -9,12 +9,12 @@ import {
   type EconomicsOptions,
   type InventoryViability,
   unitsPerOrderInBundle,
-} from "./metrics.ts";
-import { generateRules } from "./rules.ts";
-import { analyzeSequences } from "./sequence.ts";
-import { buildTransactions } from "./transactions.ts";
-import type { ItemIndex, MinedItemset, ProductStat } from "./types.ts";
-import { computeUpsell, type ProductUpsell } from "./upsell.ts";
+} from "@/api/analysis/metrics.ts";
+import { generateRules } from "@/api/analysis/rules.ts";
+import { analyzeSequences } from "@/api/analysis/sequence.ts";
+import { buildTransactions } from "@/api/analysis/transactions.ts";
+import type { ItemIndex, MinedItemset, ProductStat } from "@/api/analysis/types.ts";
+import { computeUpsell, type ProductUpsell } from "@/api/analysis/upsell.ts";
 
 export type Algorithm = "apriori" | "fpgrowth" | "auto";
 

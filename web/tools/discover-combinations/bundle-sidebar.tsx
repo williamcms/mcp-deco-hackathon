@@ -4,8 +4,8 @@ import { cn } from "@/web/lib/utils.ts";
 import type { CombinationFormatters } from "@/web/utils/formatters.ts";
 import { Search } from "lucide-react";
 import { useMemo, useState } from "react";
-import type { ProductGraphNode } from "./bundle-flow-nodes.tsx";
-import { Empty, SmallButton } from "./index.tsx";
+import type { ProductGraphNode } from "@/web/tools/discover-combinations/bundle-flow-nodes.tsx";
+import { Empty, Pagination, SmallButton, usePagination } from "@/web/tools/discover-combinations/index.tsx";
 
 export type SidebarFilter = "all" | "hub" | "isolated";
 export type SidebarSort = "centrality" | "connections" | "margin";
@@ -137,6 +137,8 @@ export function BundleSidebar({
 			.sort((a, b) => sortValue(b, sort) - sortValue(a, sort));
 	}, [nodes, search, filter, sort, hubThreshold]);
 
+	const { page, setPage, totalPages, pageItems } = usePagination(visible);
+
 	return (
 		<div className="flex flex-col bg-card border border-border rounded-xl w-70 shrink-0 h-140 card-shadow">
 			<div className="flex flex-col gap-2.5 p-3 border-b border-border">
@@ -187,7 +189,7 @@ export function BundleSidebar({
 				{visible.length === 0 ? (
 					<Empty>Nenhum produto encontrado.</Empty>
 				) : (
-					visible.map((node) => (
+					pageItems.map((node) => (
 						<SidebarItem
 							key={node.productId}
 							node={node}
@@ -199,6 +201,7 @@ export function BundleSidebar({
 					))
 				)}
 			</div>
+			<Pagination page={page} totalPages={totalPages} onChange={setPage} />
 		</div>
 	);
 }

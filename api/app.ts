@@ -1,8 +1,8 @@
 import { withRuntime } from "@decocms/runtime";
-import { prompts } from "./prompts/index.ts";
-import { discoverCombinationsAppResource } from "./resources/discover-combinations.ts";
-import { tools } from "./tools/index.ts";
-import { type Env, StateSchema } from "./types/env.ts";
+import { prompts } from "@/api/prompts/index.ts";
+import { discoverCombinationsAppResource } from "@/api/resources/discover-combinations.ts";
+import { tools } from "@/api/tools/index.ts";
+import { type Env, StateSchema } from "@/api/types/env.ts";
 
 // biome-ignore lint/suspicious/noExplicitAny: runtime.fetch signature compatibility
 type Fetcher = (req: Request, ...args: any[]) => Response | Promise<Response>;

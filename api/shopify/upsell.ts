@@ -1,5 +1,5 @@
-import { formatUserErrors } from "./bundles.ts";
-import { ShopifyApiError, type ShopifyCredentials, shopifyGraphQL } from "./client.ts";
+import { formatUserErrors } from "@/api/shopify/bundles.ts";
+import { ShopifyApiError, type ShopifyCredentials, shopifyGraphQL } from "@/api/shopify/client.ts";
 
 /**
  * Metafields reservados da Shopify para "Produtos relacionados" — o campo que

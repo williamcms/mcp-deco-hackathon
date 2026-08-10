@@ -1,4 +1,4 @@
-import type { DiscoverCombinationsOutput } from "../../../api/tools/discover-combinations.ts";
+import type { DiscoverCombinationsOutput } from "@/api/tools/discover-combinations.ts";
 
 type Combination = DiscoverCombinationsOutput["combinations"][number];
 

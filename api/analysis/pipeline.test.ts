@@ -1,13 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import type { ShopifyLineItem, ShopifyOrder } from "../shopify/orders.ts";
+import type { ShopifyLineItem, ShopifyOrder } from "@/api/shopify/orders.ts";
 import {
 	discoverCombinations,
 	LIFT_CEILING,
 	SCORE_WEIGHTS,
-} from "./discover.ts";
-import { computeEconomics, computeViability } from "./metrics.ts";
-import { analyzeSequences } from "./sequence.ts";
-import { buildTransactions } from "./transactions.ts";
+} from "@/api/analysis/discover.ts";
+import { computeEconomics, computeViability } from "@/api/analysis/metrics.ts";
+import { analyzeSequences } from "@/api/analysis/sequence.ts";
+import { buildTransactions } from "@/api/analysis/transactions.ts";
 
 // ---------------------------------------------------------------------------
 // Fixtures

@@ -1,10 +1,10 @@
 import { createTool } from "@decocms/runtime/tools";
 import { z } from "zod";
-import { adminProductUrl, toProductGid } from "../shopify/bundles.ts";
-import { resolveCredentials } from "../shopify/client.ts";
-import { type ComplementaryMerge, mergeComplementaryProducts } from "../shopify/cross-sell.ts";
-import { fetchUpsellContext, type RelatedProductsDisplay, setRelatedProducts } from "../shopify/upsell.ts";
-import type { Env } from "../types/env.ts";
+import { adminProductUrl, toProductGid } from "@/api/shopify/bundles.ts";
+import { resolveCredentials } from "@/api/shopify/client.ts";
+import { type ComplementaryMerge, mergeComplementaryProducts } from "@/api/shopify/cross-sell.ts";
+import { fetchUpsellContext, type RelatedProductsDisplay, setRelatedProducts } from "@/api/shopify/upsell.ts";
+import type { Env } from "@/api/types/env.ts";
 
 // ---------------------------------------------------------------------------
 // Input

@@ -11,8 +11,8 @@
  * catálogo — com support, lift e margem incremental prontos — sem precisar
  * consultar `rules.ts` de novo.
  */
-import type { DiscoveredCombination, DiscoveredSequence } from "./discover.ts";
-import type { ProductStat } from "./types.ts";
+import type { DiscoveredCombination, DiscoveredSequence } from "@/api/analysis/discover.ts";
+import type { ProductStat } from "@/api/analysis/types.ts";
 
 /**
  * Pesos de cada eixo no score de centralidade (0-100 no total). Centralizados

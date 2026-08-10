@@ -1,8 +1,8 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { McpProvider } from "./context.tsx";
-import { AppRouter } from "./router.tsx";
-import "./globals.css";
+import { McpProvider } from "@/web/context.tsx";
+import { AppRouter } from "@/web/router.tsx";
+import "@/web/globals.css";
 
 const rootElement = document.getElementById("root");
 

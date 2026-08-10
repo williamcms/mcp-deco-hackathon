@@ -1,8 +1,8 @@
 import { type CombinationFormatters, formatLiftMultiplier, formatPercentage } from "@/web/utils/formatters.ts";
 import { ArrowRight, ArrowRightLeft, Package } from "lucide-react";
-import type { CrossSellEdge, ProductGraphNode } from "./bundle-flow-nodes.tsx";
-import { Modal } from "./floating.tsx";
-import { Row, SmallButton } from "./index.tsx";
+import type { CrossSellEdge, ProductGraphNode } from "@/web/tools/discover-combinations/bundle-flow-nodes.tsx";
+import { Modal } from "@/web/tools/discover-combinations/floating.tsx";
+import { Row, SmallButton } from "@/web/tools/discover-combinations/index.tsx";
 
 export interface RelationshipDetail {
 	central: ProductGraphNode;

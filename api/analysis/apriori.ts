@@ -1,4 +1,4 @@
-import { itemsetKey, type MinedItemset } from "./types.ts";
+import { itemsetKey, type MinedItemset } from "@/api/analysis/types.ts";
 
 /**
  * Apriori clássico (Agrawal & Srikant, 1994).

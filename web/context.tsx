@@ -1,7 +1,7 @@
 import { type App, type McpUiHostContext, useApp, useHostStyles } from "@modelcontextprotocol/ext-apps/react";
 import { createContext, type ReactNode, useCallback, useContext, useState } from "react";
-import { INITIAL_STATE, type McpState } from "./types.ts";
-import { extractToolErrorText } from "./utils/mcp-tool-result.ts";
+import { INITIAL_STATE, type McpState } from "@/web/types.ts";
+import { extractToolErrorText } from "@/web/utils/mcp-tool-result.ts";
 
 const McpStateContext = createContext<McpState>(INITIAL_STATE);
 const McpAppContext = createContext<App | null>(null);

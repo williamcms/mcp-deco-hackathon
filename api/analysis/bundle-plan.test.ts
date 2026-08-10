@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import type { ComponentProduct } from "../shopify/bundles.ts";
+import type { ComponentProduct } from "@/api/shopify/bundles.ts";
 import {
 	buildBundlePlan,
 	type ComponentRequest,
 	defaultBundleTitle,
-} from "./bundle-plan.ts";
+} from "@/api/analysis/bundle-plan.ts";
 
 // ---------------------------------------------------------------------------
 // Fixtures

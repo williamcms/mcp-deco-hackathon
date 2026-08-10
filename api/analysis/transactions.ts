@@ -1,10 +1,10 @@
-import type { ShopifyOrder } from "../shopify/orders.ts";
+import type { ShopifyOrder } from "@/api/shopify/orders.ts";
 import {
 	ItemIndex,
 	type ProductStat,
 	type Transaction,
 	type TransactionLine,
-} from "./types.ts";
+} from "@/api/analysis/types.ts";
 
 function toNumber(amount: string | null | undefined): number {
 	if (amount == null) return 0;

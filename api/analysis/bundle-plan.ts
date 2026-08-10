@@ -2,7 +2,7 @@ import type {
 	BundleComponentInput,
 	ComponentProduct,
 	ProductVariant,
-} from "../shopify/bundles.ts";
+} from "@/api/shopify/bundles.ts";
 
 /**
  * Monta o plano do bundle: quais variantes entram, quanto custa, quanto sobra

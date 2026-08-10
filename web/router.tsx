@@ -1,7 +1,7 @@
 import { createHashHistory } from "@tanstack/history";
 import { createRootRoute, createRoute, createRouter, Outlet, RouterProvider } from "@tanstack/react-router";
-import { useMcpHostContext, useMcpState } from "./context.tsx";
-import DiscoverCombinationsPage from "./tools/discover-combinations/index.tsx";
+import { useMcpHostContext, useMcpState } from "@/web/context.tsx";
+import DiscoverCombinationsPage from "@/web/tools/discover-combinations/index.tsx";
 
 const TOOL_PAGES: Record<string, React.ComponentType> = {
   discover_combinations: DiscoverCombinationsPage,

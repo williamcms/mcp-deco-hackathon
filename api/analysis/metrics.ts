@@ -1,4 +1,4 @@
-import type { ProductStat, Transaction } from "./types.ts";
+import type { ProductStat, Transaction } from "@/api/analysis/types.ts";
 
 export type ViabilityLevel = "high" | "medium" | "low" | "unknown";
 

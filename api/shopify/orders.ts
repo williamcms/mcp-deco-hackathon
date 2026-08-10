@@ -1,4 +1,4 @@
-import { type ShopifyCredentials, shopifyGraphQL } from "./client.ts";
+import { type ShopifyCredentials, shopifyGraphQL } from "@/api/shopify/client.ts";
 
 /**
  * Orders with their line items, plus everything the collection step needs:

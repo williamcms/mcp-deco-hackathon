@@ -1,12 +1,12 @@
 import { createTool } from "@decocms/runtime/tools";
 import { z } from "zod";
-import { discoverCombinations } from "../analysis/discover.ts";
-import { resolveCredentials } from "../shopify/client.ts";
-import type { Env } from "../types/env.ts";
+import { discoverCombinations } from "@/api/analysis/discover.ts";
+import { resolveCredentials } from "@/api/shopify/client.ts";
+import type { Env } from "@/api/types/env.ts";
 import {
 	collectOrders,
 	discoverCombinationsInputSchema,
-} from "./discover-combinations.ts";
+} from "@/api/tools/discover-combinations.ts";
 
 // ---------------------------------------------------------------------------
 // Input

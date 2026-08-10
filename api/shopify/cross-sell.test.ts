@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mergeComplementaryProducts } from "./cross-sell.ts";
+import { mergeComplementaryProducts } from "@/api/shopify/cross-sell.ts";
 
 describe("mergeComplementaryProducts", () => {
 	test("merge soma candidatos novos aos já existentes, sem duplicar", () => {

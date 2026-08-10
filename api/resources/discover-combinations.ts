@@ -1,8 +1,8 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createPublicResource } from "@decocms/runtime/tools";
-import { DISCOVER_COMBINATIONS_RESOURCE_URI } from "../tools/discover-combinations.ts";
-import type { Env } from "../types/env.ts";
+import { DISCOVER_COMBINATIONS_RESOURCE_URI } from "@/api/tools/discover-combinations.ts";
+import type { Env } from "@/api/types/env.ts";
 
 const RESOURCE_MIME_TYPE = "text/html;profile=mcp-app";
 

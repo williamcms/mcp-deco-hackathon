@@ -1,13 +1,13 @@
 import type { CombinationFormatters } from "@/web/utils/formatters.ts";
 import { useEffect, useMemo, useState } from "react";
-import { BundleFlowCanvas } from "./bundle-flow-canvas.tsx";
-import { computeHubThreshold, type CrossSellEdge, type ProductGraphNode } from "./bundle-flow-nodes.tsx";
+import { BundleFlowCanvas } from "@/web/tools/discover-combinations/bundle-flow-canvas.tsx";
+import { computeHubThreshold, type CrossSellEdge, type ProductGraphNode } from "@/web/tools/discover-combinations/bundle-flow-nodes.tsx";
 import {
 	BundleRelationshipDrawer,
 	type RelationshipDetail,
-} from "./bundle-relationship-drawer.tsx";
-import { BundleSidebar } from "./bundle-sidebar.tsx";
-import { Empty } from "./index.tsx";
+} from "@/web/tools/discover-combinations/bundle-relationship-drawer.tsx";
+import { BundleSidebar } from "@/web/tools/discover-combinations/bundle-sidebar.tsx";
+import { Empty } from "@/web/tools/discover-combinations/index.tsx";
 
 function isHubProduct(node: ProductGraphNode, hubThreshold: number): boolean {
 	return !node.isolated && node.centralityScore >= hubThreshold;
@@ -121,9 +121,7 @@ export function BundleGraphSection({
 			formatters={formatters}
 			onExplore={setSelectedId}
 			onOpenDetails={openDetails}
-			onCreateBundle={(edge) => handleCreateBundle([edge])}
 			onCreateBundleSelection={handleCreateBundle}
-			onCreateCrossSell={(edge) => handleCreateCrossSell([edge])}
 			onCreateCrossSellSelection={handleCreateCrossSell}
 			isFullscreen={canvasFullscreen}
 			onToggleFullscreen={() => setCanvasFullscreen((value) => !value)}

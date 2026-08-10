@@ -4,9 +4,9 @@ import {
 	computeBundleCentrality,
 	type CrossSellEdge,
 	type NextPurchaseEdge,
-} from "./centrality.ts";
-import type { DiscoveredCombination, DiscoveredSequence } from "./discover.ts";
-import type { ProductStat } from "./types.ts";
+} from "@/api/analysis/centrality.ts";
+import type { DiscoveredCombination, DiscoveredSequence } from "@/api/analysis/discover.ts";
+import type { ProductStat } from "@/api/analysis/types.ts";
 
 // ---------------------------------------------------------------------------
 // Fixtures

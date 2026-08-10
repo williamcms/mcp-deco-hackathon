@@ -1,6 +1,6 @@
 import { createTool } from "@decocms/runtime/tools";
 import { z } from "zod";
-import type { Env } from "../types/env.ts";
+import type { Env } from "@/api/types/env.ts";
 
 export const shopifyProductsInputSchema = z.object({
 	limit: z

@@ -1,4 +1,4 @@
-import type { Env, State } from "../types/env.ts";
+import type { Env, State } from "@/api/types/env.ts";
 
 const DEFAULT_API_VERSION = "2025-01";
 

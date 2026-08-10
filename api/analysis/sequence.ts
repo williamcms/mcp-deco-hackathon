@@ -1,4 +1,4 @@
-import type { Transaction } from "./types.ts";
+import type { Transaction } from "@/api/analysis/types.ts";
 
 /** Transição "quem comprou A depois voltou e comprou B". */
 export interface SequenceRule {

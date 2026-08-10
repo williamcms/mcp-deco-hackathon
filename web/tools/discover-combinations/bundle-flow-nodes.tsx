@@ -11,7 +11,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/web/components/ui/too
 import { formatLiftMultiplier, formatPercentage } from "@/web/utils/formatters.ts";
 import type { CombinationFormatters } from "@/web/utils/formatters.ts";
 import { Handle, Position } from "@xyflow/react";
-import { ArrowRightLeft, Info, MoreHorizontal, Package, Plus } from "lucide-react";
+import { ArrowRightLeft, Compass, Info, MoreHorizontal, Plus } from "lucide-react";
 
 export type ProductGraphNode = DiscoverCombinationsOutput["bundleCentrality"][number];
 export type CrossSellEdge = ProductGraphNode["crossSell"][number];
@@ -157,9 +157,6 @@ export interface RelatedNodeData {
 	centralTitle: string;
 	onExplore: (productId: string) => void;
 	onOpenDetails: (edge: CrossSellEdge) => void;
-	onCreateBundle: (edge: CrossSellEdge) => void;
-	/** Grava este produto como complementar (cross-sell) do produto central, direto na Shopify. */
-	onCreateCrossSell: (edge: CrossSellEdge) => void;
 	selected: boolean;
 	onToggleSelect: (productId: string) => void;
 	[key: string]: unknown;
@@ -217,7 +214,7 @@ function CrossSellConfidenceLegend({
 }
 
 export function RelatedProductNode({ data }: { data: RelatedNodeData }) {
-	const { edge, centralTitle, onExplore, onOpenDetails, onCreateBundle, onCreateCrossSell, selected, onToggleSelect } = data;
+	const { edge, centralTitle, onExplore, onOpenDetails, selected, onToggleSelect } = data;
 
 	return (
 		<FlowCard className={selected ? "border-2 border-primary" : "border border-border"}>
@@ -230,9 +227,10 @@ export function RelatedProductNode({ data }: { data: RelatedNodeData }) {
 					aria-label={`Selecionar ${edge.title} para o bundle`}
 					className="mt-0.5"
 				/>
+				{/* Clicking the card toggles selection, same as the checkbox — "explore" (re-center) moved to the "···" menu below. */}
 				<button
 					type="button"
-					onClick={() => onExplore(edge.productId)}
+					onClick={() => onToggleSelect(edge.productId)}
 					className="flex flex-col flex-1 gap-1.5 min-w-0 text-left"
 				>
 					<span className="font-medium text-sm truncate" title={edge.title}>
@@ -257,17 +255,13 @@ export function RelatedProductNode({ data }: { data: RelatedNodeData }) {
 						</button>
 					</DropdownMenuTrigger>
 					<DropdownMenuContent align="end">
+						<DropdownMenuItem onSelect={() => onExplore(edge.productId)}>
+							<Compass className="size-4" />
+							Ver interações
+						</DropdownMenuItem>
 						<DropdownMenuItem onSelect={() => onOpenDetails(edge)}>
 							<Info className="size-4" />
 							Ver detalhes
-						</DropdownMenuItem>
-						<DropdownMenuItem onSelect={() => onCreateBundle(edge)}>
-							<Package className="size-4" />
-							Montar bundle
-						</DropdownMenuItem>
-						<DropdownMenuItem onSelect={() => onCreateCrossSell(edge)}>
-							<ArrowRightLeft className="size-4" />
-							Gerar cross-sell
 						</DropdownMenuItem>
 					</DropdownMenuContent>
 				</DropdownMenu>

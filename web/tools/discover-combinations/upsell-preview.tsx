@@ -1,26 +1,42 @@
 import type { CreateUpsellOutput } from "@/api/tools/create-upsell.ts";
-import { ArrowUpRight, Package } from "lucide-react";
-import { Alert, Card, Empty, Row, SmallButton } from "./index.tsx";
+import { ArrowUpRight, Package, X } from "lucide-react";
+import { Alert, Card, Empty, Row, SmallButton } from "@/web/tools/discover-combinations/index.tsx";
 
-type ProductRef = CreateUpsellOutput["finalRelatedProducts"][number];
+export type ProductRef = CreateUpsellOutput["finalRelatedProducts"][number];
 
-function ProductPill({ product }: { product: ProductRef }) {
+function ProductPill({ product, onRemove }: { product: ProductRef; onRemove?: () => void }) {
 	return (
 		<span className="inline-flex items-center gap-1.5 bg-muted/60 px-2 py-1 rounded-md max-w-50 text-xs">
 			{product.imageUrl ? <img src={product.imageUrl} alt="" className="rounded size-4 object-cover shrink-0" /> : null}
 			<span className="truncate" title={product.title}>
 				{product.title}
 			</span>
+			{onRemove ? (
+				<button
+					type="button"
+					aria-label={`Remover ${product.title}`}
+					onClick={onRemove}
+					className="flex justify-center items-center hover:bg-accent rounded-sm size-3.5 text-muted-foreground shrink-0"
+				>
+					<X className="size-3" />
+				</button>
+			) : null}
 		</span>
 	);
 }
 
-function ProductPillList({ products }: { products: ProductRef[] }) {
+export function ProductPillList({
+	products,
+	onRemove,
+}: {
+	products: ProductRef[];
+	onRemove?: (productId: string) => void;
+}) {
 	if (products.length === 0) return <span className="text-muted-foreground text-xs">Nenhum</span>;
 	return (
 		<div className="flex flex-wrap justify-end gap-1.5 max-w-70">
 			{products.map((product) => (
-				<ProductPill key={product.id} product={product} />
+				<ProductPill key={product.id} product={product} onRemove={onRemove ? () => onRemove(product.id) : undefined} />
 			))}
 		</div>
 	);
@@ -41,6 +57,8 @@ export interface UpsellPreviewProps {
 	busy: boolean;
 	onPublish: () => void;
 	onDismiss: () => void;
+	/** Re-simulates without this product — the caller re-runs create_upsell with mode "replace". */
+	onRemoveExisting: (productId: string) => void;
 }
 
 /**
@@ -48,7 +66,7 @@ export interface UpsellPreviewProps {
  * Mostra o que já estava configurado, o que entra e como as escolhas manuais
  * vão conviver com as recomendações automáticas da Shopify.
  */
-export function UpsellPreview({ result, busy, onPublish, onDismiss }: UpsellPreviewProps) {
+export function UpsellPreview({ result, busy, onPublish, onDismiss, onRemoveExisting }: UpsellPreviewProps) {
 	const isApplied = result.mode === "applied";
 
 	return (
@@ -62,8 +80,17 @@ export function UpsellPreview({ result, busy, onPublish, onDismiss }: UpsellPrev
 				/>
 				<Row
 					title="Já relacionados hoje"
-					description="Configurados manualmente antes desta chamada — preservados"
-					right={<ProductPillList products={result.existingRelatedProducts} />}
+					description={
+						isApplied
+							? "Configurados manualmente antes desta chamada — preservados"
+							: "Configurados antes desta chamada — clique no X para remover um"
+					}
+					right={
+						<ProductPillList
+							products={result.existingRelatedProducts}
+							onRemove={isApplied || busy ? undefined : onRemoveExisting}
+						/>
+					}
 				/>
 				<Row title={isApplied ? "Adicionados" : "Serão adicionados"} right={<ProductPillList products={result.addedProducts} />} />
 				{result.alreadyPresentProducts.length > 0 ? (

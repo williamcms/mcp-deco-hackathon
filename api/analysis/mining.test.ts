@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { apriori } from "./apriori.ts";
-import { fpGrowth } from "./fpgrowth.ts";
-import { generateRules } from "./rules.ts";
-import { itemsetKey, type MinedItemset } from "./types.ts";
+import { apriori } from "@/api/analysis/apriori.ts";
+import { fpGrowth } from "@/api/analysis/fpgrowth.ts";
+import { generateRules } from "@/api/analysis/rules.ts";
+import { itemsetKey, type MinedItemset } from "@/api/analysis/types.ts";
 
 /** Itemsets viram um mapa chave -> suporte, para comparar sem depender da ordem. */
 function asMap(itemsets: readonly MinedItemset[]): Map<string, number> {

@@ -1,11 +1,11 @@
 import { createTool } from "@decocms/runtime/tools";
 import { z } from "zod";
-import { discoverCombinations } from "../analysis/discover.ts";
-import { aggregate, round, toNumber } from "../shopify/aggregate.ts";
-import { fetchBundleProducts, summarizeBundles } from "../shopify/bundles.ts";
-import { resolveCredentials } from "../shopify/client.ts";
-import { fetchOrders, type ShopifyOrder } from "../shopify/orders.ts";
-import type { Env } from "../types/env.ts";
+import { discoverCombinations } from "@/api/analysis/discover.ts";
+import { aggregate, round, toNumber } from "@/api/shopify/aggregate.ts";
+import { fetchBundleProducts, summarizeBundles } from "@/api/shopify/bundles.ts";
+import { resolveCredentials } from "@/api/shopify/client.ts";
+import { fetchOrders, type ShopifyOrder } from "@/api/shopify/orders.ts";
+import type { Env } from "@/api/types/env.ts";
 
 export const DISCOVER_COMBINATIONS_RESOURCE_URI = "ui://mcp-app/discover-combinations";
 
