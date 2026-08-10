@@ -1,23 +1,13 @@
 {
 	"scopeName": "deco",
-	"name": "mcp-app",
-	"friendlyName": "MCP App Template",
-	"description": "Starter template for building MCP Apps on deco with interactive UIs.",
-	"icon": "",
-	"connection": {
-		"type": "HTTP",
-		"url": "https://your-app.decocache.com/api/mcp",
-		"configSchema": {
-			"type": "object",
-			"properties": {},
-			"required": []
-		}
-	},
+	"name": "mago-de-receita",
+	"friendlyName": "Mago de Receita",
+	"description": "Inteligência comercial para Shopify que transforma pedidos em oportunidades explicáveis de bundle, cross-sell e recompra.",
 	"unlisted": true,
 	"metadata": {
-		"categories": [],
+		"categories": ["Commerce"],
 		"official": false,
-		"tags": ["template", "mcp-app"],
-		"short_description": "Starter template for MCP Apps on deco."
+		"tags": ["shopify", "commerce-intelligence", "cross-sell", "bundles", "mcp"],
+		"short_description": "Mapeia oportunidades de bundle, cross-sell e recompra a partir do histórico Shopify."
 	}
 }

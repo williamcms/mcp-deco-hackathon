@@ -2417,13 +2417,13 @@ export default function DiscoverCombinationsPage() {
     }
 
     if (state.status === "error") {
-      return (
-        <ErrorScreen
-          title="Falha na análise"
-          message={state.error ?? "Erro desconhecido"}
-          hint="Confira o domínio da loja, o access token e os escopos read_orders, read_products, read_inventory e read_customers."
-        />
-      );
+		return (
+			<ErrorScreen
+				title="Falha na análise"
+				message={state.error ?? "Erro desconhecido"}
+				hint="Confira o domínio e o token da Admin API. A análise base usa read_orders e read_products; estoque, margem e sequências são capacidades adicionais."
+			/>
+		);
     }
 
     // Connected, cancelled, or no result yet: the analysis can be run from here.

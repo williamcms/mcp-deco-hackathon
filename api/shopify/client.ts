@@ -67,7 +67,8 @@ export function resolveCredentials(env: Env): ShopifyCredentials {
 		throw new ShopifyConfigError(
 			`Credenciais da Shopify ausentes: ${missing.join(", ")}. ` +
 				"Configure na app dentro do deco Studio ou exporte as variáveis de ambiente. " +
-				"O token precisa dos escopos read_orders, read_products e read_inventory.",
+				"Use um token da Admin API com read_orders e read_products. " +
+				"Adicione read_inventory para estoque e margem, read_customers para sequências e write_products apenas ao publicar uma ação.",
 		);
 	}
 
@@ -130,7 +131,7 @@ export async function shopifyGraphQL<T>(
 		if (response.status === 401 || response.status === 403) {
 			throw new ShopifyConfigError(
 				`Shopify recusou a autenticação (HTTP ${response.status}). ` +
-					"Verifique o access token e se ele tem os escopos read_orders, read_products e read_inventory.",
+					"Verifique o token da Admin API. A análise base usa read_orders e read_products; estoque, margem e sequências exigem capacidades adicionais.",
 			);
 		}
 
