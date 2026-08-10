@@ -1,6 +1,6 @@
-# Mago Receita
+# Agent SugiroKit
 
-**Mago Receita** is a Shopify commercial-intelligence MCP that turns order history into explainable opportunities for bundles, cross-sell, and repeat purchases.
+**Agent SugiroKit** is a Shopify commercial-intelligence MCP that turns order history into explainable opportunities for bundles, cross-sell, and repeat purchases.
 
 It gives a merchant a navigable commercial map of the catalog instead of a spreadsheet of disconnected metrics: which products act as bridges, which items are bought together, what customers tend to buy later, and which action is safe to validate before it reaches the storefront.
 
@@ -13,7 +13,7 @@ Shopify stores accumulate valuable order history, but finding a practical revenu
 - What do customers tend to buy after a first product?
 - Is a suggested bundle financially viable and supported by available stock?
 
-Most analytics views stop at reporting. Mago Receita connects evidence to a next action while preserving merchant review before anything changes in Shopify.
+Most analytics views stop at reporting. Agent SugiroKit connects evidence to a next action while preserving merchant review before anything changes in Shopify.
 
 ## The solution
 
@@ -29,7 +29,7 @@ The interactive experience is available through the `discover_combinations` MCP 
 
 ## Why the recommendations are trustworthy
 
-Mago Receita does not use an LLM to calculate commercial metrics. Product relationships are derived from historical orders, then shown with their evidence:
+Agent SugiroKit does not use an LLM to calculate commercial metrics. Product relationships are derived from historical orders, then shown with their evidence:
 
 | Signal | Meaning |
 | --- | --- |
@@ -57,7 +57,7 @@ Products without relevant relationships are also shown. An isolated product is n
 
 ## Shopify permissions
 
-Mago Receita uses a **Shopify Admin API** token. Storefront API permissions do not replace these Admin API permissions.
+Agent SugiroKit uses a **Shopify Admin API** token. Storefront API permissions do not replace these Admin API permissions.
 
 | Scope | When it is needed | What remains available without it |
 | --- | --- | --- |
