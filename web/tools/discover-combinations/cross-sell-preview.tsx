@@ -1,5 +1,5 @@
 import type { CreateCrossSellOutput } from "@/api/tools/create-cross-sell.ts";
-import { ArrowRightLeft, X } from "lucide-react";
+import { ArrowRightLeft, Info, X } from "lucide-react";
 import { Alert, Card, Empty, Row, SmallButton } from "@/web/tools/discover-combinations/index.tsx";
 
 export type ProductRef = CreateCrossSellOutput["finalComplementaryProducts"][number];
@@ -109,7 +109,7 @@ export function CrossSellPreview({ result, busy, onPublish, onDismiss, onRemoveE
 				<Empty>Selecione ao menos um produto de cross-sell no canvas antes de gerar.</Empty>
 			) : null}
 
-			<Alert icon={<ArrowRightLeft className="size-4" />}>
+			<Alert icon={<Info className="size-4" />}>
 				Isso grava o metafield reservado de "produtos complementares" da Shopify — o mesmo que alimenta o card "Search &
 				discovery" no admin e os widgets de recomendação de produto nos temas que leem esse campo. Não cria produto novo
 				nem altera preço.

@@ -582,7 +582,7 @@ export function Pagination({
   if (totalPages <= 1) return null;
 
   return (
-    <div className="flex justify-between items-center px-4 py-2.5 border-t border-border">
+    <div className="flex justify-between items-center px-4 py-2.5 border-border border-t">
       <span className="text-muted-foreground text-xs">
         Página {page + 1} de {totalPages}
       </span>
@@ -1398,9 +1398,12 @@ function BundlesSection({
         description="Estado real na Shopify — todo o catálogo, não só o que foi feito nesta sessão. Clique no X de um produto para remover."
         right={
           <div className="flex items-center gap-2.5">
-            <span className="text-muted-foreground text-xs">
-              {catalogLoading ? "Atualizando..." : catalogUpdatedLabel}
-            </span>
+            <HoverTip
+              content={catalogLoading ? "Atualizando..." : catalogUpdatedLabel ?? "Ainda não atualizado nesta sessão"}
+              className="inline-flex cursor-help"
+            >
+              <Info className="size-3.5 text-muted-foreground/70" />
+            </HoverTip>
             <SmallButton onClick={onRefreshCatalog} disabled={catalogLoading}>
               <RefreshCw className={cn("size-3.5", catalogLoading && "animate-spin")} />
               Atualizar
@@ -1875,7 +1878,7 @@ function BundlePreview({
                 Cancelar
               </SmallButton>
               <SmallButton active onClick={onPublish} disabled={busy || duplicate}>
-                {busy ? "Criando..." : "Criar bundle na Shopify"}
+                {busy ? "Criando..." : "Criar bundle"}
               </SmallButton>
             </>
           )}
@@ -2417,13 +2420,13 @@ export default function DiscoverCombinationsPage() {
     }
 
     if (state.status === "error") {
-      return (
-        <ErrorScreen
-          title="Falha na análise"
-          message={state.error ?? "Erro desconhecido"}
-          hint="Confira o domínio da loja, o access token e os escopos read_orders, read_products, read_inventory e read_customers."
-        />
-      );
+		return (
+			<ErrorScreen
+				title="Falha na análise"
+				message={state.error ?? "Erro desconhecido"}
+				hint="Confira o domínio e o token da Admin API. A análise base usa read_orders e read_products; estoque, margem e sequências são capacidades adicionais."
+			/>
+		);
     }
 
     // Connected, cancelled, or no result yet: the analysis can be run from here.
@@ -2487,8 +2490,8 @@ export default function DiscoverCombinationsPage() {
 
   const tabOptions: TabOption[] = [
     { key: "combinations", label: "Combinações" },
-    { key: "bundles", label: "Aprovações", badge: bundles.draft.length },
     { key: "rules", label: "Cross-sell & Upsell" },
+    { key: "bundles", label: "Aprovações", badge: bundles.draft.length },
     { key: "sales", label: "Vendas" },
   ];
 
@@ -2917,7 +2920,7 @@ export default function DiscoverCombinationsPage() {
                   type="button"
                   disabled={bundleActionBusy}
                   onClick={runBundleAction}
-                  className="inline-flex justify-center items-center gap-1.5 disabled:opacity-50 bg-destructive hover:bg-destructive/90 px-2.5 rounded-lg h-7 text-white text-sm whitespace-nowrap transition-colors disabled:pointer-events-none"
+                  className="inline-flex justify-center items-center gap-1.5 bg-destructive hover:bg-destructive/90 disabled:opacity-50 px-2.5 rounded-lg h-7 text-white text-sm whitespace-nowrap transition-colors disabled:pointer-events-none"
                 >
                   {bundleActionBusy ? "Removendo..." : "Remover permanentemente"}
                 </button>
