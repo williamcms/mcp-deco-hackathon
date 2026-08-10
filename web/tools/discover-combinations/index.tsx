@@ -2,6 +2,7 @@ import type { CreateBundleOutput } from "@/api/tools/create-bundle.ts";
 import type { CreateCrossSellOutput } from "@/api/tools/create-cross-sell.ts";
 import type { CreateUpsellOutput } from "@/api/tools/create-upsell.ts";
 import type { DiscoverCombinationsInput, DiscoverCombinationsOutput } from "@/api/tools/discover-combinations.ts";
+import type { ListCatalogRelationshipsOutput } from "@/api/tools/list-catalog-relationships.ts";
 import { ErrorScreen } from "@/web/components/error-screen.tsx";
 import { Badge } from "@/web/components/ui/badge.tsx";
 import { ChartContainer } from "@/web/components/ui/chart.tsx";
@@ -48,6 +49,7 @@ import {
   Package,
   Percent,
   Receipt,
+  RefreshCw,
   Sparkles,
   Trash2,
   TrendingUp,
@@ -63,6 +65,46 @@ type Upsell = DiscoverCombinationsOutput["upsell"][number];
 
 const PERIODS = [7, 30, 60] as const;
 const TOOL_NAME = "discover_combinations";
+
+// ---------------------------------------------------------------------------
+// Catalog relationships (real cross-sell/upsell state, not analytical) —
+// cached in localStorage since list_catalog_relationships scans the whole
+// catalog and is too heavy to refetch on every render.
+// ---------------------------------------------------------------------------
+
+type CatalogRelationshipEntry = ListCatalogRelationshipsOutput["entries"][number];
+
+interface CatalogRelationshipsCache {
+  entries: CatalogRelationshipEntry[];
+  fetchedAt: number;
+  truncated: boolean;
+}
+
+const CATALOG_RELATIONSHIPS_STORAGE_KEY = "discover_combinations:catalog_relationships";
+const CATALOG_RELATIONSHIPS_TTL_MS = 5 * 60 * 1000;
+
+function readCatalogRelationshipsCache(): CatalogRelationshipsCache | null {
+  try {
+    const raw = localStorage.getItem(CATALOG_RELATIONSHIPS_STORAGE_KEY);
+    return raw ? (JSON.parse(raw) as CatalogRelationshipsCache) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeCatalogRelationshipsCache(cache: CatalogRelationshipsCache) {
+  try {
+    localStorage.setItem(CATALOG_RELATIONSHIPS_STORAGE_KEY, JSON.stringify(cache));
+  } catch {
+    // ponytail: localStorage indisponível (modo privado, quota) — cache vira só-de-sessão, sem quebrar a tela.
+  }
+}
+
+function formatUpdatedLabel(fetchedAt: number, now: number): string {
+  const minutes = Math.max(0, Math.round((now - fetchedAt) / 60_000));
+  if (minutes === 0) return "Atualizado agora mesmo";
+  return `Atualizado há ${minutes} ${minutes === 1 ? "minuto" : "minutos"}`;
+}
 
 type SortKey = "score" | "ticket" | "occurrences";
 
@@ -1288,8 +1330,12 @@ function BundlesSection({
   money,
   onRequestApprove,
   onRequestAction,
-  crossSellKnown,
-  upsellKnown,
+  catalogEntries,
+  catalogLoading,
+  catalogError,
+  catalogTruncated,
+  catalogUpdatedLabel,
+  onRefreshCatalog,
   onRemoveCrossSell,
   onRemoveUpsell,
 }: {
@@ -1297,8 +1343,13 @@ function BundlesSection({
   money: Intl.NumberFormat;
   onRequestApprove: (bundle: BundleSummary) => void;
   onRequestAction: (bundle: BundleSummary, kind: "archive" | "delete") => void;
-  crossSellKnown: CreateCrossSellOutput[];
-  upsellKnown: CreateUpsellOutput[];
+  catalogEntries: CatalogRelationshipEntry[];
+  catalogLoading: boolean;
+  catalogError: string | null;
+  catalogTruncated: boolean;
+  /** null enquanto nunca buscou — texto pronto, ex.: "Atualizado há 2 min". */
+  catalogUpdatedLabel: string | null;
+  onRefreshCatalog: () => void;
   onRemoveCrossSell: (productId: string, remainingIds: string[]) => void;
   onRemoveUpsell: (productId: string, remainingIds: string[]) => void;
 }) {
@@ -1344,59 +1395,84 @@ function BundlesSection({
 
       <Section
         title="Cross-sell e upsell aplicados"
-        description='Relações gravadas na Shopify nesta sessão, via "Gerar cross-sell" no canvas ou "Gerar upsell" na tabela de Upsell. Clique no X de um produto para remover.'
+        description="Estado real na Shopify — todo o catálogo, não só o que foi feito nesta sessão. Clique no X de um produto para remover."
         right={
-          <Badge variant="secondary" className="tabular-nums">
-            {crossSellKnown.length + upsellKnown.length}
-          </Badge>
+          <div className="flex items-center gap-2.5">
+            <span className="text-muted-foreground text-xs">
+              {catalogLoading ? "Atualizando..." : catalogUpdatedLabel}
+            </span>
+            <SmallButton onClick={onRefreshCatalog} disabled={catalogLoading}>
+              <RefreshCw className={cn("size-3.5", catalogLoading && "animate-spin")} />
+              Atualizar
+            </SmallButton>
+            <Badge variant="secondary" className="tabular-nums">
+              {catalogEntries.length}
+            </Badge>
+          </div>
         }
       >
         <Card>
-          {crossSellKnown.length === 0 && upsellKnown.length === 0 ? (
-            <Empty>Nenhum cross-sell ou upsell aplicado ainda nesta sessão.</Empty>
+          {catalogError ? <Row title={<span className="text-destructive text-sm">{catalogError}</span>} first /> : null}
+          {catalogTruncated ? (
+            <Row
+              first={!catalogError}
+              icon={<AlertTriangle className="size-4 text-amber-600 dark:text-amber-400" />}
+              title={
+                <span className="font-normal text-muted-foreground text-sm">
+                  Catálogo maior que o limite varrido — esta lista pode não cobrir tudo.
+                </span>
+              }
+            />
+          ) : null}
+          {catalogEntries.length === 0 ? (
+            <Empty>
+              {catalogLoading
+                ? "Buscando cross-sell e upsell configurados na Shopify..."
+                : "Nenhum produto do catálogo tem cross-sell ou upsell configurado."}
+            </Empty>
           ) : (
-            <>
-              {crossSellKnown.map((entry, index) => (
-                <Row
-                  key={`cross-sell-${entry.product.id}`}
-                  first={index === 0}
-                  icon={<ArrowRightLeft className="size-4" />}
-                  title={entry.product.title}
-                  description="Cross-sell (produtos complementares)"
-                  right={
-                    <ProductPillList
-                      products={entry.finalComplementaryProducts}
-                      onRemove={(productId) =>
-                        onRemoveCrossSell(
-                          entry.product.id,
-                          entry.finalComplementaryProducts.map((p) => p.id).filter((id) => id !== productId),
-                        )
-                      }
-                    />
-                  }
-                />
-              ))}
-              {upsellKnown.map((entry, index) => (
-                <Row
-                  key={`upsell-${entry.product.id}`}
-                  first={crossSellKnown.length === 0 && index === 0}
-                  icon={<ArrowUpRight className="size-4" />}
-                  title={entry.product.title}
-                  description="Upsell (produtos relacionados)"
-                  right={
-                    <ProductPillList
-                      products={entry.finalRelatedProducts}
-                      onRemove={(productId) =>
-                        onRemoveUpsell(
-                          entry.product.id,
-                          entry.finalRelatedProducts.map((p) => p.id).filter((id) => id !== productId),
-                        )
-                      }
-                    />
-                  }
-                />
-              ))}
-            </>
+            catalogEntries.map((entry, index) => (
+              <div key={entry.product.id} className={cn("flex flex-col gap-1", index > 0 && "pt-1")}>
+                {entry.complementaryProducts.length > 0 ? (
+                  <Row
+                    first={index === 0 && !catalogError && !catalogTruncated}
+                    icon={<ArrowRightLeft className="size-4" />}
+                    title={entry.product.title}
+                    description="Cross-sell (produtos complementares)"
+                    right={
+                      <ProductPillList
+                        products={entry.complementaryProducts}
+                        onRemove={(productId) =>
+                          onRemoveCrossSell(
+                            entry.product.id,
+                            entry.complementaryProducts.map((p) => p.id).filter((id) => id !== productId),
+                          )
+                        }
+                      />
+                    }
+                  />
+                ) : null}
+                {entry.relatedProducts.length > 0 ? (
+                  <Row
+                    first={index === 0 && entry.complementaryProducts.length === 0 && !catalogError && !catalogTruncated}
+                    icon={<ArrowUpRight className="size-4" />}
+                    title={entry.product.title}
+                    description="Upsell (produtos relacionados)"
+                    right={
+                      <ProductPillList
+                        products={entry.relatedProducts}
+                        onRemove={(productId) =>
+                          onRemoveUpsell(
+                            entry.product.id,
+                            entry.relatedProducts.map((p) => p.id).filter((id) => id !== productId),
+                          )
+                        }
+                      />
+                    }
+                  />
+                ) : null}
+              </div>
+            ))
           )}
         </Card>
       </Section>
@@ -1860,11 +1936,6 @@ export default function DiscoverCombinationsPage() {
   const [crossSellModalOpen, setCrossSellModalOpen] = useState(false);
   const [crossSellBusy, setCrossSellBusy] = useState(false);
   const [crossSellError, setCrossSellError] = useState<string | null>(null);
-  // Last-applied cross-sell result per central product — the only way to show
-  // "cross-sell already approved" on the Aprovações screen without a bulk
-  // Shopify query: opportunistically captured whenever create_cross_sell
-  // actually writes the metafield (result.mode === "applied").
-  const [crossSellKnown, setCrossSellKnown] = useState<Map<string, CreateCrossSellOutput>>(new Map());
 
   // Upsell preview, aberto pela tabela de Upsell. Mesmo padrão do cross-sell:
   // create_upsell não tem UI própria, então o resultado vem pra cá.
@@ -1877,8 +1948,17 @@ export default function DiscoverCombinationsPage() {
   const [upsellModalOpen, setUpsellModalOpen] = useState(false);
   const [upsellBusy, setUpsellBusy] = useState(false);
   const [upsellError, setUpsellError] = useState<string | null>(null);
-  /** Same idea as crossSellKnown, for upsell. */
-  const [upsellKnown, setUpsellKnown] = useState<Map<string, CreateUpsellOutput>>(new Map());
+
+  // Estado real de cross-sell/upsell na Shopify, catálogo inteiro (não só
+  // desta sessão) — cacheado em localStorage com timestamp, atualizado a
+  // cada 5min ou manualmente, e com merge otimista quando esta própria tela
+  // grava um cross-sell/upsell (evita esperar o próximo fetch pra refletir).
+  const [catalogRelationships, setCatalogRelationships] = useState<CatalogRelationshipsCache | null>(() =>
+    readCatalogRelationshipsCache(),
+  );
+  const [catalogLoading, setCatalogLoading] = useState(false);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
+  const [nowTick, setNowTick] = useState(() => Date.now());
 
   const [sortBy, setSortBy] = useState<SortKey>("score");
   const [glossaryOpen, setGlossaryOpen] = useState(false);
@@ -1902,6 +1982,83 @@ export default function DiscoverCombinationsPage() {
   const [bundleActionError, setBundleActionError] = useState<string | null>(null);
   const [archivedIds, setArchivedIds] = useState<Set<string>>(new Set());
   const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
+
+  /** Busca list_catalog_relationships (varre o catálogo inteiro) e substitui o cache local. */
+  async function refreshCatalogRelationships() {
+    if (!app || catalogLoading) return;
+
+    setCatalogLoading(true);
+    setCatalogError(null);
+
+    try {
+      const response = await app.callServerTool({ name: "list_catalog_relationships", arguments: {} });
+      if (response.isError) throw new Error(extractToolErrorText(response));
+
+      const structured = response.structuredContent as ListCatalogRelationshipsOutput | undefined;
+      if (!structured) throw new Error("A tool respondeu sem conteúdo estruturado.");
+
+      const next: CatalogRelationshipsCache = {
+        entries: structured.entries,
+        fetchedAt: Date.now(),
+        truncated: structured.truncated,
+      };
+      setCatalogRelationships(next);
+      writeCatalogRelationshipsCache(next);
+    } catch (error) {
+      setCatalogError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setCatalogLoading(false);
+    }
+  }
+
+  /**
+   * Atualização otimista: chamada depois que create_cross_sell/create_upsell
+   * gravam de fato na Shopify, pra essa tela refletir na hora sem esperar o
+   * próximo fetch de 5min. Substitui só o lado (complementary ou related) que
+   * mudou, preservando o outro; remove a entrada se os dois ficarem vazios.
+   */
+  function upsertCatalogEntry(
+    product: CatalogRelationshipEntry["product"],
+    patch: Partial<Pick<CatalogRelationshipEntry, "complementaryProducts" | "relatedProducts" | "relatedProductsDisplay">>,
+  ) {
+    setCatalogRelationships((prev) => {
+      const base = prev ?? { entries: [], fetchedAt: Date.now(), truncated: false };
+      const existing = base.entries.find((entry) => entry.product.id === product.id);
+      const merged: CatalogRelationshipEntry = {
+        product,
+        complementaryProducts: patch.complementaryProducts ?? existing?.complementaryProducts ?? [],
+        relatedProducts: patch.relatedProducts ?? existing?.relatedProducts ?? [],
+        relatedProductsDisplay: patch.relatedProductsDisplay ?? existing?.relatedProductsDisplay ?? null,
+      };
+
+      const withoutExisting = base.entries.filter((entry) => entry.product.id !== product.id);
+      const hasSomething = merged.complementaryProducts.length > 0 || merged.relatedProducts.length > 0;
+      const nextEntries = hasSomething ? [...withoutExisting, merged] : withoutExisting;
+
+      const next: CatalogRelationshipsCache = { ...base, entries: nextEntries };
+      writeCatalogRelationshipsCache(next);
+      return next;
+    });
+  }
+
+  // Busca ao montar (ou refaz se o cache estiver velho), e a cada 5min
+  // enquanto a tela estiver aberta. Depende só de `app` de propósito — senão
+  // toda atualização (inclusive a otimista) reagendaria o timer.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: só deve reagir a `app` ficar disponível, não a mudanças em catalogRelationships/catalogLoading.
+  useEffect(() => {
+    if (!app) return;
+    const cached = readCatalogRelationshipsCache();
+    const isStale = !cached || Date.now() - cached.fetchedAt > CATALOG_RELATIONSHIPS_TTL_MS;
+    if (isStale) refreshCatalogRelationships();
+    const interval = setInterval(refreshCatalogRelationships, CATALOG_RELATIONSHIPS_TTL_MS);
+    return () => clearInterval(interval);
+  }, [app]);
+
+  // Só pra "Atualizado há Xmin" não ficar parado entre fetches.
+  useEffect(() => {
+    const interval = setInterval(() => setNowTick(Date.now()), 30_000);
+    return () => clearInterval(interval);
+  }, []);
 
   /**
    * Calls the tool directly on the server that serves this app.
@@ -2036,7 +2193,7 @@ export default function DiscoverCombinationsPage() {
 
       setCrossSellPreview({ productId, relatedProductIds, mode, result: structured });
       if (structured.mode === "applied") {
-        setCrossSellKnown((prev) => new Map(prev).set(productId, structured));
+        upsertCatalogEntry(structured.product, { complementaryProducts: structured.finalComplementaryProducts });
       }
     } catch (error) {
       setCrossSellError(error instanceof Error ? error.message : String(error));
@@ -2097,7 +2254,10 @@ export default function DiscoverCombinationsPage() {
 
       setUpsellPreview({ productId, relatedProductIds, mode, result: structured });
       if (structured.mode === "applied") {
-        setUpsellKnown((prev) => new Map(prev).set(productId, structured));
+        upsertCatalogEntry(structured.product, {
+          relatedProducts: structured.finalRelatedProducts,
+          relatedProductsDisplay: structured.display.applied,
+        });
       }
     } catch (error) {
       setUpsellError(error instanceof Error ? error.message : String(error));
@@ -2435,8 +2595,12 @@ export default function DiscoverCombinationsPage() {
             money={bundleMoney}
             onRequestApprove={setConfirmingBundle}
             onRequestAction={(bundle, kind) => setBundleAction({ bundle, kind })}
-            crossSellKnown={Array.from(crossSellKnown.values())}
-            upsellKnown={Array.from(upsellKnown.values())}
+            catalogEntries={catalogRelationships?.entries ?? []}
+            catalogLoading={catalogLoading}
+            catalogError={catalogError}
+            catalogTruncated={catalogRelationships?.truncated ?? false}
+            catalogUpdatedLabel={catalogRelationships ? formatUpdatedLabel(catalogRelationships.fetchedAt, nowTick) : null}
+            onRefreshCatalog={refreshCatalogRelationships}
             onRemoveCrossSell={removeCrossSellProduct}
             onRemoveUpsell={removeUpsellProduct}
           />

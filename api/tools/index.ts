@@ -6,6 +6,7 @@ import { createUpsellTool } from "@/api/tools/create-upsell.ts";
 import { deleteBundleTool } from "@/api/tools/delete-bundle.ts";
 import { discoverCombinationsTool } from "@/api/tools/discover-combinations.ts";
 import { getProductCommercialRelationshipsTool } from "@/api/tools/get-product-commercial-relationships.ts";
+import { listCatalogRelationshipsTool } from "@/api/tools/list-catalog-relationships.ts";
 import { shopifyProductsTool } from "@/api/tools/shopify-products.ts";
 
 export const tools = [
@@ -18,4 +19,5 @@ export const tools = [
   getProductCommercialRelationshipsTool,
   createCrossSellTool,
   createUpsellTool,
+  listCatalogRelationshipsTool,
 ];

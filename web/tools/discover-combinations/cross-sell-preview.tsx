@@ -4,7 +4,10 @@ import { Alert, Card, Empty, Row, SmallButton } from "@/web/tools/discover-combi
 
 export type ProductRef = CreateCrossSellOutput["finalComplementaryProducts"][number];
 
-function ProductPill({ product, onRemove }: { product: ProductRef; onRemove?: () => void }) {
+/** Só os campos que o pill de fato usa — aceita ProductRef e também a entrada mais magra de list_catalog_relationships. */
+export type ProductPillRef = { id: string; title: string; imageUrl: string | null };
+
+function ProductPill({ product, onRemove }: { product: ProductPillRef; onRemove?: () => void }) {
 	return (
 		<span className="inline-flex items-center gap-1.5 bg-muted/60 px-2 py-1 rounded-md max-w-50 text-xs">
 			{product.imageUrl ? (
@@ -31,7 +34,7 @@ export function ProductPillList({
 	products,
 	onRemove,
 }: {
-	products: ProductRef[];
+	products: ProductPillRef[];
 	onRemove?: (productId: string) => void;
 }) {
 	if (products.length === 0) return <span className="text-muted-foreground text-xs">Nenhum</span>;
